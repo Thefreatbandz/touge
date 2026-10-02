@@ -197,22 +197,8 @@ func _build_scenery(rng: RandomNumberGenerator) -> void:
 				col, Vector3.UP)
 	_finish(self, _mat_flat)
 
-	# mountain silhouettes
-	var mtn_mesh := BoxMesh.new()
-	mtn_mesh.size = Vector3.ONE
-	var mtns: Array[Transform3D] = []
-	for k in range(48):
-		var i := rng.randi_range(0, COUNT - 1)
-		var sgn := -1.0 if rng.randf() < 0.5 else 1.0
-		var lat := sgn * rng.randf_range(120.0, 320.0)
-		var mp := points[i] + sides[i] * lat
-		var sc := Vector3(rng.randf_range(60, 150), rng.randf_range(28, 80), rng.randf_range(40, 90))
-		var basis := Basis().scaled(sc).rotated(Vector3.UP, rng.randf_range(0, TAU))
-		mtns.append(Transform3D(basis, mp + Vector3(0, sc.y * 0.28, 0)))
-	var mtn_mat := StandardMaterial3D.new()
-	mtn_mat.albedo_color = Color(0.030, 0.042, 0.062)
-	mtn_mat.roughness = 1.0
-	_multimesh_box(self, mtn_mesh, mtn_mat, mtns)
+	# --- retro PS1 city: chunky blocks with lit windows, clear of the road ---
+	_build_city(rng)
 
 	# trees (dark cones) — kept clear of the road even where it bends back
 	var tree_mesh := CylinderMesh.new()
@@ -291,6 +277,120 @@ func _build_gates() -> void:
 		var q1 := p + s * 5.9 + Vector3(0, 5.2, 0)
 		_quad(q0, q1, q0 + Vector3(0, 1.4, 0), q1 + Vector3(0, 1.4, 0), tint, tangents[i])
 		_finish(gate, _mat_emit)
+
+func _rot_y(v: Vector3, yaw: float) -> Vector3:
+	var sy := sin(yaw)
+	var cy := cos(yaw)
+	return Vector3(v.x * cy + v.z * sy, v.y, -v.x * sy + v.z * cy)
+
+func _box_at(c: Vector3, size: Vector3, yaw: float, col: Color) -> void:
+	# rotated box into the active _v/_n/_c arrays (cull off, winding is free)
+	var hx := size.x * 0.5
+	var hy := size.y * 0.5
+	var hz := size.z * 0.5
+	var corners: Array[Vector3] = []
+	for sx in [-1.0, 1.0]:
+		for syy in [-1.0, 1.0]:
+			for sz in [-1.0, 1.0]:
+				corners.append(c + _rot_y(Vector3(sx * hx, syy * hy, sz * hz), yaw))
+	var faces := [[0, 1, 4, 5], [2, 3, 6, 7], [0, 1, 2, 3], [4, 5, 6, 7], [0, 2, 4, 6], [1, 3, 5, 7]]
+	var norms := [Vector3.DOWN, Vector3.UP, Vector3.LEFT, Vector3.RIGHT, Vector3.FORWARD, Vector3.BACK]
+	for fi in range(6):
+		var f: Array = faces[fi]
+		var rn := _rot_y(norms[fi], yaw)
+		_quad(corners[f[0]], corners[f[1]], corners[f[2]], corners[f[3]], col, rn)
+
+func _build_city(rng: RandomNumberGenerator) -> void:
+	# placement: [pos, radius, w, h, d, yaw]
+	var placed: Array = []
+	var guard := 0
+	var body_cols := [Color(0.10, 0.12, 0.17), Color(0.13, 0.11, 0.10),
+		Color(0.09, 0.11, 0.15), Color(0.12, 0.13, 0.14), Color(0.11, 0.09, 0.13)]
+	while placed.size() < 55 and guard < 3000:
+		guard += 1
+		var i := rng.randi_range(0, COUNT - 1)
+		var sgn := -1.0 if rng.randf() < 0.5 else 1.0
+		var lat := sgn * rng.randf_range(24.0, 90.0)
+		var bp := points[i] + sides[i] * lat
+		var w := rng.randf_range(10.0, 22.0)
+		var d := rng.randf_range(10.0, 22.0)
+		var h := rng.randf_range(12.0, 48.0)
+		var rad := maxf(w, d) * 0.5 + 13.0
+		var ok := true
+		for j in range(0, COUNT, 2):
+			var dx := bp.x - points[j].x
+			var dz := bp.z - points[j].z
+			if dx * dx + dz * dz < rad * rad:
+				ok = false
+				break
+		if ok:
+			for pb in placed:
+				var pc: Vector3 = pb[0]
+				var pr: float = pb[1]
+				var ddx := bp.x - pc.x
+				var ddz := bp.z - pc.z
+				if ddx * ddx + ddz * ddz < (rad + pr) * (rad + pr):
+					ok = false
+					break
+		if not ok:
+			continue
+		placed.append([bp, rad, w, h, d, float(yaws[i])])
+	# bodies (flat PS1 colors, one mesh)
+	_begin()
+	for pb in placed:
+		var bp: Vector3 = pb[0]
+		var w: float = pb[2]
+		var h: float = pb[3]
+		var d: float = pb[4]
+		var yaw: float = pb[5]
+		var col: Color = body_cols[rng.randi_range(0, body_cols.size() - 1)]
+		var shade := rng.randf_range(0.85, 1.15)
+		_box_at(bp + Vector3(0, h * 0.5, 0), Vector3(w, h, d), yaw,
+			Color(col.r * shade, col.g * shade, col.b * shade))
+	_finish(self, _mat_flat)
+	# windows + rooftop beacons (emissive, one mesh)
+	_begin()
+	var warm := Color(1.0, 0.72, 0.32)
+	var cool := Color(0.62, 0.80, 1.0)
+	for pb in placed:
+		var bp: Vector3 = pb[0]
+		var w: float = pb[2]
+		var h: float = pb[3]
+		var d: float = pb[4]
+		var yaw: float = pb[5]
+		# 4 vertical faces: [outward normal, u axis, face width, half extent]
+		var rx := _rot_y(Vector3.RIGHT, yaw)
+		var fz := _rot_y(Vector3.FORWARD, yaw)
+		var bk := _rot_y(Vector3.BACK, yaw)
+		var face_defs := [
+			[rx, fz, d, w * 0.5],
+			[-rx, fz, d, w * 0.5],
+			[bk, rx, w, d * 0.5],
+			[-bk, rx, w, d * 0.5],
+		]
+		for fd in face_defs:
+			var n: Vector3 = fd[0]
+			var u: Vector3 = fd[1]
+			var fw: float = fd[2]
+			var he: float = fd[3]
+			var fcenter := bp + n * he
+			var rows := int((h - 5.0) / 4.0)
+			var cols := int((fw - 3.0) / 3.0)
+			for r in range(rows):
+				var wy := 3.5 + r * 4.0
+				for cc in range(cols):
+					var wx := -fw * 0.5 + 2.0 + cc * 3.0
+					var roll := rng.randf()
+					if roll > 0.92:
+						continue  # dark window
+					var wc := warm if roll < 0.68 else cool
+					var wp := fcenter + u * wx + Vector3(0, wy, 0) + n * 0.07
+					var hu := u * 0.75
+					var hv := Vector3(0, 1.1, 0)
+					_quad(wp - hu - hv, wp + hu - hv, wp - hu + hv, wp + hu + hv, wc, n)
+		if h > 30.0:
+			_box_at(bp + Vector3(0, h + 0.4, 0), Vector3(0.9, 0.9, 0.9), 0.0, Color(1.0, 0.12, 0.10))
+	_finish(self, _mat_emit)
 
 # --- queries ----------------------------------------------------------------
 

@@ -215,8 +215,8 @@ func _build_mesh() -> void:
 	beam.position = Vector3(0, 1.0, -1.8)
 	beam.rotation.x = -0.06
 	beam.light_color = Color(1.0, 0.94, 0.80)
-	beam.light_energy = 5.0
-	beam.spot_range = 55.0
-	beam.spot_angle = 26.0
+	beam.light_energy = 9.0
+	beam.spot_range = 75.0
+	beam.spot_angle = 32.0
 	beam.shadow_enabled = false
 	_body.add_child(beam)

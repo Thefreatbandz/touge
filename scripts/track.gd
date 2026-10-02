@@ -129,7 +129,7 @@ func _multimesh_box(parent: Node3D, mesh: Mesh, mat: Material, transforms: Array
 func _build_road(rng: RandomNumberGenerator) -> void:
 	_begin()
 	var up := Vector3.UP
-	var asphalt := Color(0.055, 0.06, 0.075)
+	var asphalt := Color(0.085, 0.09, 0.105)
 	for i in range(COUNT - 1):
 		var p := points[i]
 		var q := points[i + 1]
@@ -214,19 +214,33 @@ func _build_scenery(rng: RandomNumberGenerator) -> void:
 	mtn_mat.roughness = 1.0
 	_multimesh_box(self, mtn_mesh, mtn_mat, mtns)
 
-	# trees (dark cones)
+	# trees (dark cones) — kept clear of the road even where it bends back
 	var tree_mesh := CylinderMesh.new()
 	tree_mesh.top_radius = 0.0
 	tree_mesh.bottom_radius = 2.6
 	tree_mesh.height = 8.0
 	var trees: Array[Transform3D] = []
-	for k in range(380):
+	var placed := 0
+	var guard := 0
+	while placed < 380 and guard < 4000:
+		guard += 1
 		var i := rng.randi_range(0, COUNT - 1)
 		var sgn := -1.0 if rng.randf() < 0.5 else 1.0
 		var lat := sgn * rng.randf_range(11.0, 90.0)
 		var tp := points[i] + sides[i] * lat
+		# reject if too close to ANY part of the road (curves can double back)
+		var clear := true
+		for j in range(COUNT):
+			var dx := tp.x - points[j].x
+			var dz := tp.z - points[j].z
+			if dx * dx + dz * dz < 9.0 * 9.0:
+				clear = false
+				break
+		if not clear:
+			continue
 		var sc := rng.randf_range(0.7, 1.5)
 		trees.append(Transform3D(Basis().scaled(Vector3(sc, sc, sc)), tp + Vector3(0, 4.0 * sc, 0)))
+		placed += 1
 	var tree_mat := StandardMaterial3D.new()
 	tree_mat.albedo_color = Color(0.020, 0.055, 0.032)
 	tree_mat.roughness = 1.0

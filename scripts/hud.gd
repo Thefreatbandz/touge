@@ -19,7 +19,6 @@ var _title_panel: Control
 var _result_panel: Control
 var _result_l: Label
 var _hint_l: Label
-var _dbg_l: Label  # TEMPORARY diagnostic overlay
 
 func _ready() -> void:
 	layer = 10
@@ -51,6 +50,7 @@ func _mk_button(text: String, pos: Vector2, size: Vector2, font := 40) -> Button
 	b.position = pos
 	b.custom_minimum_size = size
 	b.size = size
+	b.focus_mode = Control.FOCUS_NONE  # never steal SPACE/ENTER from driving
 	b.add_theme_font_size_override("font_size", font)
 	b.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
 	var sb := StyleBoxFlat.new()
@@ -116,10 +116,6 @@ func _build() -> void:
 	_hint_l.custom_minimum_size = Vector2(1280, 28)
 	_hint_l.modulate = Color(1, 1, 1, 0.45)
 	add_child(_hint_l)
-	# TEMPORARY diagnostic overlay
-	_dbg_l = _mk_label("", 20, Vector2(24, 56))
-	_dbg_l.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
-	add_child(_dbg_l)
 	# title overlay
 	_title_panel = _mk_dim()
 	var tt := _mk_label("TOUGE", 110, Vector2(0, 150), HORIZONTAL_ALIGNMENT_CENTER)
@@ -132,6 +128,7 @@ func _build() -> void:
 	_title_panel.add_child(ts)
 	var go_b := Button.new()
 	go_b.text = "TAP TO RACE"
+	go_b.focus_mode = Control.FOCUS_NONE
 	go_b.position = Vector2(1280 / 2 - 170, 430)
 	go_b.custom_minimum_size = Vector2(340, 100)
 	go_b.size = Vector2(340, 100)
@@ -147,6 +144,7 @@ func _build() -> void:
 	_result_panel.add_child(_result_l)
 	var re := Button.new()
 	re.text = "RUN IT BACK"
+	re.focus_mode = Control.FOCUS_NONE
 	re.position = Vector2(1280 / 2 - 170, 500)
 	re.custom_minimum_size = Vector2(340, 90)
 	re.size = Vector2(340, 90)
@@ -190,9 +188,6 @@ func show_results(time_s: float, drift: float, best: float, new_best: bool) -> v
 
 func hide_results() -> void:
 	_result_panel.visible = false
-
-func set_dbg(t: String) -> void:
-	_dbg_l.text = t
 
 func _fmt_time(s: float) -> String:
 	var m := int(s) / 60

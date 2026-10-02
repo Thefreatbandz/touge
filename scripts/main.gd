@@ -170,10 +170,6 @@ func _process(dt: float) -> void:
 			_smoke.emitting = _car.drifting
 			_hud.set_hud(_race_t, _car.drift_score, _car.speed_kmh(),
 				_track.progress_of(_car._seg))
-			# TEMPORARY diagnostic overlay
-			_hud.set_dbg("st=%d gas=%d hb=%d brk=%d str=%.2f fs=%.1f spd=%.1f seg=%d" % [
-				_state, int(_hud.t_gas), int(_hud.t_hb), int(_hud.t_brake),
-				_hud.touch_steer(), _car.f_speed, _car.vel.length(), _car._seg])
 			if _car._seg >= _track.finish_idx:
 				_finish()
 		State.FINISHED:

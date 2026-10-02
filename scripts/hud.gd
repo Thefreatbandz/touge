@@ -19,6 +19,7 @@ var _title_panel: Control
 var _result_panel: Control
 var _result_l: Label
 var _hint_l: Label
+var _dbg_l: Label  # TEMPORARY diagnostic overlay
 
 func _ready() -> void:
 	layer = 10
@@ -89,8 +90,8 @@ func _build() -> void:
 	_prog.show_percentage = false
 	add_child(_prog)
 	# steering (bottom-left)
-	var bl := _mk_button("◀", Vector2(36, 720 - 190), Vector2(150, 150), 64)
-	var br := _mk_button("▶", Vector2(200, 720 - 190), Vector2(150, 150), 64)
+	var bl := _mk_button("<", Vector2(36, 720 - 190), Vector2(150, 150), 72)
+	var br := _mk_button(">", Vector2(200, 720 - 190), Vector2(150, 150), 72)
 	bl.button_down.connect(func(): t_steer_l = true)
 	bl.button_up.connect(func(): t_steer_l = false)
 	br.button_down.connect(func(): t_steer_r = true)
@@ -115,6 +116,10 @@ func _build() -> void:
 	_hint_l.custom_minimum_size = Vector2(1280, 28)
 	_hint_l.modulate = Color(1, 1, 1, 0.45)
 	add_child(_hint_l)
+	# TEMPORARY diagnostic overlay
+	_dbg_l = _mk_label("", 20, Vector2(24, 56))
+	_dbg_l.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
+	add_child(_dbg_l)
 	# title overlay
 	_title_panel = _mk_dim()
 	var tt := _mk_label("TOUGE", 110, Vector2(0, 150), HORIZONTAL_ALIGNMENT_CENTER)
@@ -185,6 +190,9 @@ func show_results(time_s: float, drift: float, best: float, new_best: bool) -> v
 
 func hide_results() -> void:
 	_result_panel.visible = false
+
+func set_dbg(t: String) -> void:
+	_dbg_l.text = t
 
 func _fmt_time(s: float) -> String:
 	var m := int(s) / 60

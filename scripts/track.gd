@@ -252,6 +252,11 @@ func _build_scenery(rng: RandomNumberGenerator) -> void:
 	lamp_mat.albedo_color = Color(1.0, 0.85, 0.55)
 	_multimesh_box(self, lamp_mesh, lamp_mat, lamps)
 
+	_build_billboards(rng)
+	_build_poles_wires(rng)
+	_build_rail_markers()
+	_build_sky_extras(rng)
+
 func _build_gates() -> void:
 	for g in [[start_idx, Color(0.2, 1.0, 0.9)], [finish_idx, Color(1.0, 0.75, 0.2)]]:
 		var i: int = g[0]
@@ -391,6 +396,159 @@ func _build_city(rng: RandomNumberGenerator) -> void:
 		if h > 30.0:
 			_box_at(bp + Vector3(0, h + 0.4, 0), Vector3(0.9, 0.9, 0.9), 0.0, Color(1.0, 0.12, 0.10))
 	_finish(self, _mat_emit)
+
+func _wire(p1: Vector3, p2: Vector3, thick: float, col: Color) -> void:
+	# two-segment sagging wire into the active arrays
+	var mid := (p1 + p2) * 0.5
+	mid.y -= 0.9
+	for seg in [[p1, mid], [mid, p2]]:
+		var a: Vector3 = seg[0]
+		var b: Vector3 = seg[1]
+		var d := b - a
+		var yaw := atan2(d.x, d.z)
+		var length := Vector3(d.x, 0.0, d.z).length()
+		_box_at((a + b) * 0.5, Vector3(thick, thick, length), yaw, col)
+
+func _build_billboards(rng: RandomNumberGenerator) -> void:
+	var texts := ["TOUGE", "DRIFT", "APEX", "REDLINE", "MIDNIGHT", "NITRO", "TURBO", "GP 90"]
+	var cols := [Color(0.25, 1.0, 1.0), Color(1.0, 0.3, 0.85), Color(1.0, 0.85, 0.25),
+		Color(1.0, 0.5, 0.15), Color(0.5, 1.0, 0.45)]
+	_begin()
+	var n := 0
+	var guard := 0
+	while n < 9 and guard < 600:
+		guard += 1
+		var i := rng.randi_range(20, COUNT - 21)
+		var sgn := -1.0 if rng.randf() < 0.5 else 1.0
+		var lat := sgn * rng.randf_range(13.0, 18.0)
+		var bp := points[i] + sides[i] * lat
+		var ok := true
+		for j in range(maxi(0, i - 10), mini(COUNT, i + 11)):
+			var dx := bp.x - points[j].x
+			var dz := bp.z - points[j].z
+			if dx * dx + dz * dz < 64.0:
+				ok = false
+				break
+		if not ok:
+			continue
+		n += 1
+		var tangent := (points[i + 1] - points[i - 1]).normalized()
+		var to_road := -sides[i] * sgn
+		var pc := bp + Vector3(0, 7.6, 0)
+		var neon: Color = cols[rng.randi_range(0, cols.size() - 1)]
+		var up := Vector3(0, 1, 0)
+		var hw := 4.6
+		var hh := 2.3
+		# dark panel backing
+		_quad(pc - tangent * hw - up * hh, pc + tangent * hw - up * hh,
+			pc - tangent * hw + up * hh, pc + tangent * hw + up * hh,
+			Color(0.015, 0.02, 0.05), to_road)
+		# neon border
+		var bt := 0.18
+		_quad(pc + up * hh - tangent * (hw + bt), pc + up * hh + tangent * (hw + bt),
+			pc + up * (hh + bt) - tangent * (hw + bt), pc + up * (hh + bt) + tangent * (hw + bt), neon, to_road)
+		_quad(pc - up * (hh + bt) - tangent * (hw + bt), pc - up * (hh + bt) + tangent * (hw + bt),
+			pc - up * hh - tangent * (hw + bt), pc - up * hh + tangent * (hw + bt), neon, to_road)
+		_quad(pc - tangent * (hw + bt) - up * hh, pc - tangent * hw - up * hh,
+			pc - tangent * (hw + bt) + up * hh, pc - tangent * hw + up * hh, neon, to_road)
+		_quad(pc + tangent * hw - up * hh, pc + tangent * (hw + bt) - up * hh,
+			pc + tangent * hw + up * hh, pc + tangent * (hw + bt) + up * hh, neon, to_road)
+		# support poles (dark, in the unshaded pass they stay dark)
+		for ps in [-3.2, 3.2]:
+			_box_at(bp + tangent * ps + Vector3(0, 2.6, 0), Vector3(0.35, 5.2, 0.35), 0.0,
+				Color(0.05, 0.05, 0.07))
+		_finish(self, _mat_emit)
+		# floating text
+		var lab := Label3D.new()
+		lab.text = texts[rng.randi_range(0, texts.size() - 1)]
+		lab.font_size = 96
+		lab.pixel_size = 0.018
+		lab.modulate = neon
+		lab.outline_size = 16
+		lab.outline_modulate = Color(0, 0, 0, 1)
+		lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		lab.shaded = false
+		lab.position = pc + to_road * 0.4
+		add_child(lab)
+
+func _build_poles_wires(rng: RandomNumberGenerator) -> void:
+	_begin()
+	var tops_l: Array[Vector3] = []
+	var tops_r: Array[Vector3] = []
+	var k := 8
+	while k < COUNT - 8:
+		for sgn: float in [-1.0, 1.0]:
+			var pp := points[k] + sides[k] * (sgn * 8.2)
+			var ok := true
+			for j in range(maxi(0, k - 6), mini(COUNT, k + 7)):
+				var dx := pp.x - points[j].x
+				var dz := pp.z - points[j].z
+				if dx * dx + dz * dz < 49.0:
+					ok = false
+					break
+			if not ok:
+				continue
+			_box_at(pp + Vector3(0, 4.5, 0), Vector3(0.3, 9.0, 0.3), 0.0, Color(0.075, 0.075, 0.09))
+			var top := pp + Vector3(0, 8.9, 0)
+			if sgn < 0.0:
+				tops_l.append(top)
+			else:
+				tops_r.append(top)
+		k += 13
+	_finish(self, _mat_flat)
+	_begin()
+	for arr in [tops_l, tops_r]:
+		for wi in range(arr.size() - 1):
+			_wire(arr[wi], arr[wi + 1], 0.08, Color(0.02, 0.02, 0.03))
+	_finish(self, _mat_flat)
+
+func _build_rail_markers() -> void:
+	_begin()
+	var up := Vector3(0, 1, 0)
+	var k := 0
+	while k < COUNT:
+		for sgn: float in [-1.0, 1.0]:
+			var rp := points[k] + sides[k] * (sgn * 5.45) + Vector3(0, 0.72, 0)
+			var nrm := -sides[k] * sgn
+			var rt := nrm.cross(up).normalized()
+			var col := Color(1.0, 0.18, 0.12) if sgn < 0.0 else Color(0.95, 0.95, 1.0)
+			var s := 0.16
+			_quad(rp - rt * s - up * s, rp + rt * s - up * s,
+				rp - rt * s + up * s, rp + rt * s + up * s, col, nrm)
+		k += 3
+	_finish(self, _mat_emit)
+
+func _build_sky_extras(rng: RandomNumberGenerator) -> void:
+	var c := (points[0] + points[COUNT / 2]) * 0.5
+	# chunky low-poly moon, fog-exempt so it stays crisp
+	var moon_mesh := SphereMesh.new()
+	moon_mesh.radius = 20.0
+	moon_mesh.height = 40.0
+	moon_mesh.radial_segments = 8
+	moon_mesh.rings = 4
+	var moon_mat := StandardMaterial3D.new()
+	moon_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	moon_mat.albedo_color = Color(0.88, 0.92, 1.0)
+	moon_mat.disable_fog = true
+	var moon := MeshInstance3D.new()
+	moon.mesh = moon_mesh
+	moon.material_override = moon_mat
+	moon.position = c + Vector3(280, 260, -340)
+	add_child(moon)
+	# stars: tiny emissive boxes on a dome, fog-exempt
+	var star_mesh := BoxMesh.new()
+	star_mesh.size = Vector3(1.6, 1.6, 1.6)
+	var star_mat := StandardMaterial3D.new()
+	star_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	star_mat.albedo_color = Color(0.85, 0.9, 1.0)
+	star_mat.disable_fog = true
+	var xf: Array[Transform3D] = []
+	for s in range(140):
+		var ang := rng.randf_range(0.0, TAU)
+		var rad := rng.randf_range(420.0, 620.0)
+		var h := rng.randf_range(170.0, 400.0)
+		xf.append(Transform3D(Basis(), c + Vector3(cos(ang) * rad, h, sin(ang) * rad)))
+	_multimesh_box(self, star_mesh, star_mat, xf)
 
 # --- queries ----------------------------------------------------------------
 

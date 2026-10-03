@@ -1,6 +1,8 @@
 shader_type canvas_item;
 // PS1-style post: RGB565 (5-bit) quantization + ordered dither.
 // Kills color banding on the sunset sky.
+// Note: Godot 4.7 requires the explicit hint_screen_texture uniform.
+uniform sampler2D SCREEN_TEXTURE : hint_screen_texture, filter_linear_mipmap;
 
 void fragment() {
 	vec3 c = texture(SCREEN_TEXTURE, SCREEN_UV).rgb;

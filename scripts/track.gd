@@ -484,18 +484,6 @@ func _build_city(rng: RandomNumberGenerator) -> void:
 				fc - tang * fw + up * 3.1, fc + tang * fw + up * 3.1, shop_col, nrm)
 	_finish(self, _mat_emit)
 
-func _wire(p1: Vector3, p2: Vector3, thick: float, col: Color) -> void:
-	# two-segment sagging wire into the active arrays
-	var mid := (p1 + p2) * 0.5
-	mid.y -= 0.9
-	for seg in [[p1, mid], [mid, p2]]:
-		var a: Vector3 = seg[0]
-		var b: Vector3 = seg[1]
-		var d := b - a
-		var yaw := atan2(d.x, d.z)
-		var length := Vector3(d.x, 0.0, d.z).length()
-		_box_at((a + b) * 0.5, Vector3(thick, thick, length), yaw, col)
-
 func _build_billboards(rng: RandomNumberGenerator) -> void:
 	var texts := ["TOUGE", "DRIFT", "APEX", "REDLINE", "MIDNIGHT", "NITRO", "TURBO", "GP 90"]
 	var cols := [Color(0.25, 1.0, 1.0), Color(1.0, 0.3, 0.85), Color(1.0, 0.85, 0.25),
@@ -559,9 +547,9 @@ func _build_billboards(rng: RandomNumberGenerator) -> void:
 		add_child(lab)
 
 func _build_poles_wires(rng: RandomNumberGenerator) -> void:
+	# utility poles only — the spanning wires cut across the camera on curves,
+	# so they stay off
 	_begin()
-	var tops_l: Array[Vector3] = []
-	var tops_r: Array[Vector3] = []
 	var k := 8
 	while k < COUNT - 8:
 		for sgn: float in [-1.0, 1.0]:
@@ -576,17 +564,7 @@ func _build_poles_wires(rng: RandomNumberGenerator) -> void:
 			if not ok:
 				continue
 			_box_at(pp + Vector3(0, 4.5, 0), Vector3(0.3, 9.0, 0.3), 0.0, Color(0.075, 0.075, 0.09))
-			var top := pp + Vector3(0, 8.9, 0)
-			if sgn < 0.0:
-				tops_l.append(top)
-			else:
-				tops_r.append(top)
 		k += 13
-	_finish(self, _mat_flat)
-	_begin()
-	for arr in [tops_l, tops_r]:
-		for wi in range(arr.size() - 1):
-			_wire(arr[wi], arr[wi + 1], 0.08, Color(0.02, 0.02, 0.03))
 	_finish(self, _mat_flat)
 
 func _build_rail_markers() -> void:
@@ -754,12 +732,12 @@ func _build_cones(rng: RandomNumberGenerator) -> void:
 		var sgn := -1.0 if rng.randf() < 0.5 else 1.0
 		for k in range(6):
 			var i := i0 + k * 3
-			var bp: Vector3 = points[i] + sides[i] * (sgn * rng.randf_range(5.6, 6.8))
+			var bp: Vector3 = points[i] + sides[i] * (sgn * rng.randf_range(6.8, 8.2))
 			var ok := true
 			for j in range(maxi(0, i - 4), mini(COUNT, i + 5)):
 				var dx := bp.x - points[j].x
 				var dz := bp.z - points[j].z
-				if dx * dx + dz * dz < 27.0:
+				if dx * dx + dz * dz < 56.0:
 					ok = false
 					break
 			if ok:

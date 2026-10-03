@@ -213,7 +213,10 @@ func set_hud(time_s: float, drift: float, kmh: float, prog: float) -> void:
 	_prog.value = prog * 1000.0
 
 func set_battle(gap_m: float, player_ahead: bool) -> void:
-	if player_ahead:
+	if gap_m < 0.5:
+		_gap_l.text = "GAP 0 m"
+		_gap_l.add_theme_color_override("font_color", Color(1.0, 0.85, 0.45))
+	elif player_ahead:
 		_gap_l.text = "GAP +%.0f m" % gap_m
 		_gap_l.add_theme_color_override("font_color", Color(0.35, 1.0, 0.55))
 		_pos_l.text = "1ST"

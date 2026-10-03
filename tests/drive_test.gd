@@ -12,6 +12,7 @@ var _prog_seg := 8
 var _prog_frame := 0
 var _rival_prog := 0.0
 var _rival_finished := false
+var _rival_wall_frames := 0
 
 func _ready() -> void:
 	var ps: PackedScene = load("res://scenes/main.tscn")
@@ -74,6 +75,9 @@ func _process(_dt: float) -> void:
 	_rival_prog = maxf(_rival_prog, _main._track.progress_of(_main._rival._seg))
 	if _main._rival_done:
 		_rival_finished = true
+	var rq: Vector3 = _main._track.query(_main._rival.global_position, _main._rival._seg)
+	if absf(rq.y) > 3.5:
+		_rival_wall_frames += 1
 	if _main._state == 3:
 		_finished = true
 	if _frame == 600 or _frame == 1800 or _frame == 3590:
@@ -85,8 +89,9 @@ func _process(_dt: float) -> void:
 	if _frame == 3600 or _frame == 6000 or _frame == 9000 or _frame == 11990:
 		var p2: Vector3 = _main._car.global_position
 		var ok_pos := p2.x == p2.x and p2.y == p2.y and p2.z == p2.z  # no NaN
-		print("TEST RESULT ok_pos=%s prog=%.2f rprog=%.2f drift=%.0f finished=%s rival_done=%s" % [
-			str(ok_pos), _min_prog, _rival_prog, _max_drift, str(_finished), str(_rival_finished)])
+		print("TEST RESULT ok_pos=%s prog=%.2f rprog=%.2f drift=%.0f finished=%s rival_done=%s wall=%d/%d" % [
+			str(ok_pos), _min_prog, _rival_prog, _max_drift, str(_finished), str(_rival_finished),
+			_rival_wall_frames, _frame])
 		if ok_pos and _min_prog > 0.25 and _max_drift > 50.0 and _rival_prog > 0.20:
 			print("TEST PASS")
 		else:

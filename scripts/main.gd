@@ -287,28 +287,41 @@ func _follow_cam(dt: float) -> void:
 		_cam.global_position += Vector3(sin(t * 39.0) * sh * 0.4, cos(t * 47.0) * sh * 0.3, 0)
 
 func _ai_inputs() -> Array:
-	# pure-pursuit rival: chase a lookahead point, brake for curvature, rubber-band
+	# pure-pursuit rival: short lookahead, aim off the wall, capped steer so the
+	# power-slide never triggers (that was throwing it into the rails)
 	var seg := _rival._seg
 	var pos := _rival.global_position
 	var speed := _rival.vel.length()
 	var last := _track.points.size() - 1
-	var look := clampi(8 + int(speed * 1.1), 8, 42)
+	var look := clampi(int(5.0 + speed * 0.55), 6, 20)
 	var ti := mini(seg + look, _track.finish_idx + 4)
 	var target: Vector3 = _track.points[ti]
+	var q: Vector3 = _track.query(pos, seg)
+	var lat: float = q.y  # + = right of center
+	if absf(lat) > 2.0:
+		target -= _track.sides[ti] * signf(lat) * 2.5
 	var to_t := target - pos
 	to_t.y = 0.0
 	var steer := 0.0
 	if to_t.length_squared() > 0.01:
 		var want_yaw := atan2(-to_t.x, -to_t.z)
 		var dyaw := wrapf(want_yaw - _rival.yaw, -PI, PI)
-		steer = clampf(dyaw * 2.2, -1.0, 1.0)
+		steer = clampf(dyaw * 2.4, -1.0, 1.0)
+	if absf(lat) > 2.4:
+		steer = clampf(steer + signf(lat) * 0.8, -1.0, 1.0)
+	# cap steer at speed: full lock + speed = power-slide = wall
+	if speed > 26.0:
+		steer = clampf(steer, -0.72, 0.72)
+	# curvature scan for braking
 	var curve := 0.0
-	var k := seg + 5
-	var kend := mini(seg + 34, last)
+	var k := seg + 4
+	var kend := mini(seg + 26, last)
 	while k <= kend:
 		curve = maxf(curve, absf(wrapf(_track.yaws[k] - _track.yaws[seg], -PI, PI)))
-		k += 3
-	var corner_speed := lerpf(52.0, 21.0, clampf(curve / 0.85, 0.0, 1.0))
+		k += 2
+	var corner_speed := lerpf(52.0, 21.0, clampf(curve / 0.7, 0.0, 1.0))
+	if absf(lat) > 3.2:
+		corner_speed = minf(corner_speed, 24.0)
 	var gap := _track.progress_of(_rival._seg) - _track.progress_of(_car._seg)
 	var top := 49.0 + clampf(-gap * 300.0, -3.0, 4.0)
 	var target_speed := minf(corner_speed, top)

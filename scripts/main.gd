@@ -23,6 +23,7 @@ var _seed := 0
 var _best := 0.0
 var _title_orbit := 0.0
 var _go_t := 0.0
+var _sparks: CPUParticles3D
 var _player_done := false
 var _rival_done := false
 var _player_time := 0.0
@@ -87,6 +88,7 @@ func _build_race() -> void:
 	var side: Vector3 = _track.sides[int(pose[2])]
 	_car.setup(_track, int(pose[2]), pose[0] + side * 2.2, float(pose[1]))
 	_rival.body_color = Color(0.85, 0.12, 0.10)
+	_rival.glow_color = Color(1.0, 0.15, 0.10)
 	_rival.setup(_track, int(pose[2]), pose[0] - side * 2.2, float(pose[1]))
 	_car.connect("scraped", _on_scrape)
 	if not _hud:
@@ -126,6 +128,27 @@ func _build_smoke() -> void:
 	_smoke.position = Vector3(0, 0.35, 1.6)
 	_smoke.emitting = false
 	_car.add_child(_smoke)
+	_build_sparks()
+
+func _build_sparks() -> void:
+	_sparks = CPUParticles3D.new()
+	_sparks.amount = 24
+	_sparks.lifetime = 0.5
+	_sparks.one_shot = true
+	_sparks.explosiveness = 0.9
+	_sparks.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	_sparks.emission_sphere_radius = 0.4
+	_sparks.direction = Vector3(0, 1, 0)
+	_sparks.spread = 60.0
+	_sparks.initial_velocity_min = 4.0
+	_sparks.initial_velocity_max = 10.0
+	_sparks.gravity = Vector3(0, -14.0, 0)
+	_sparks.scale_amount_min = 0.06
+	_sparks.scale_amount_max = 0.14
+	_sparks.color = Color(1.0, 0.75, 0.25)
+	_sparks.position = Vector3(0, 0.5, 0)
+	_sparks.emitting = false
+	_car.add_child(_sparks)
 
 func _build_rival_smoke() -> void:
 	_rival_smoke = CPUParticles3D.new()
@@ -159,6 +182,8 @@ func _on_restart() -> void:
 
 func _on_scrape() -> void:
 	Sfx.scrape()
+	if _sparks:
+		_sparks.restart()
 
 func _process(dt: float) -> void:
 	match _state:

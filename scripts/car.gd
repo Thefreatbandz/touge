@@ -21,6 +21,13 @@ var slip_deg := 0.0
 var drift_score := 0.0
 var active := false           # false during countdown/title
 var body_color := Color(0.92, 0.92, 0.94)  # set before setup() for rival paint
+var glow_color := Color(0.25, 0.9, 1.0)    # underglow tint (rival: red)
+
+const TRAIL_MAX := 220
+var _trail_pts: Array = []  # [Vector3 left, Vector3 right]
+var _trail_mi: MeshInstance3D
+var _trail_mat: StandardMaterial3D
+var _trail_fade := 0.0
 
 var _body: Node3D
 var _wheels: Array[Node3D] = []
@@ -44,6 +51,8 @@ func setup(track: Node, seg: int, pos: Vector3, start_yaw: float) -> void:
 	drifting = false
 	rotation.y = yaw
 	_build_mesh()
+	_build_trail()
+	_build_underglow()
 
 func drive(dt: float, steer: float, throttle: float, brake: float, handbrake: bool) -> void:
 	if not active:
@@ -119,6 +128,7 @@ func drive(dt: float, steer: float, throttle: float, brake: float, handbrake: bo
 	drifting = spd > 9.0 and (handbrake or slip_deg > 13.0)
 	if drifting:
 		drift_score += spd * slip_deg * dt * 0.9
+	_update_trail(dt)
 
 	# --- visuals ---
 	rotation.y = yaw
@@ -221,3 +231,131 @@ func _build_mesh() -> void:
 	beam.spot_angle = 32.0
 	beam.shadow_enabled = false
 	_body.add_child(beam)
+	# --- detail pass: rims, mirrors, skirts, lip, exhaust ---
+	var rim_c := Color(0.75, 0.77, 0.80)
+	for pivot in _wheels:
+		var rim := MeshInstance3D.new()
+		var rm := CylinderMesh.new()
+		rm.top_radius = 0.19
+		rm.bottom_radius = 0.19
+		rm.height = 0.28
+		rim.mesh = rm
+		var rmat := StandardMaterial3D.new()
+		rmat.albedo_color = rim_c
+		rmat.metallic = 0.7
+		rmat.roughness = 0.35
+		rim.material_override = rmat
+		rim.rotation.z = PI / 2.0
+		pivot.add_child(rim)
+	# side mirrors
+	_box(_body, Vector3(0.16, 0.10, 0.12), Vector3(-0.92, 1.18, -0.55), black)
+	_box(_body, Vector3(0.16, 0.10, 0.12), Vector3(0.92, 1.18, -0.55), black)
+	# side skirts
+	_box(_body, Vector3(0.10, 0.16, 2.9), Vector3(-0.93, 0.32, 0.1), black)
+	_box(_body, Vector3(0.10, 0.16, 2.9), Vector3(0.93, 0.32, 0.1), black)
+	# front lip
+	_box(_body, Vector3(1.86, 0.12, 0.30), Vector3(0, 0.22, -2.20), black)
+	# exhaust tip
+	var ex := MeshInstance3D.new()
+	var em := CylinderMesh.new()
+	em.top_radius = 0.07
+	em.bottom_radius = 0.07
+	em.height = 0.22
+	ex.mesh = em
+	var exmat := StandardMaterial3D.new()
+	exmat.albedo_color = Color(0.6, 0.62, 0.65)
+	exmat.metallic = 0.8
+	exmat.roughness = 0.3
+	ex.material_override = exmat
+	ex.rotation.x = PI / 2.0
+	ex.position = Vector3(0.55, 0.30, 2.28)
+	_body.add_child(ex)
+
+func _build_trail() -> void:
+	if _trail_mi:
+		_trail_mi.queue_free()
+	_trail_pts.clear()
+	_trail_fade = 1.0
+	_trail_mat = StandardMaterial3D.new()
+	_trail_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_trail_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_trail_mat.vertex_color_use_as_albedo = true
+	_trail_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_trail_mi = MeshInstance3D.new()
+	_trail_mi.material_override = _trail_mat
+	_trail_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	get_parent().add_child(_trail_mi)
+
+func _update_trail(dt: float) -> void:
+	if not _trail_mi:
+		return
+	if drifting and f_speed > 8.0:
+		var f := fwd()
+		var side := Vector3(-f.z, 0.0, f.x)
+		var rear := global_position - f * 1.35 + Vector3(0, 0.04, 0)
+		_trail_pts.append([rear - side * 0.80, rear + side * 0.80])
+		if _trail_pts.size() > TRAIL_MAX:
+			_trail_pts.pop_front()
+		_trail_fade = 0.0
+		_rebuild_trail()
+	else:
+		if _trail_fade < 1.0:
+			_trail_fade = minf(1.0, _trail_fade + dt * 0.25)
+			_trail_mi.transparency = _trail_fade
+
+func _rebuild_trail() -> void:
+	var n := _trail_pts.size()
+	if n < 2:
+		return
+	var verts := PackedVector3Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	for i in range(n):
+		var pair: Array = _trail_pts[i]
+		var l: Vector3 = pair[0]
+		var r: Vector3 = pair[1]
+		verts.append(l)
+		verts.append(r)
+		# older segments fade out
+		var a := 0.75 * float(i) / float(n)
+		cols.append(Color(0.02, 0.02, 0.025, a))
+		cols.append(Color(0.02, 0.02, 0.025, a))
+		if i > 0:
+			var b := (i - 1) * 2
+			idx.append_array([b, b + 1, b + 2, b + 1, b + 3, b + 2])
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_COLOR] = cols
+	arr[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	_trail_mi.mesh = mesh
+	_trail_mi.transparency = 0.0
+
+func _build_underglow() -> void:
+	var grad := Gradient.new()
+	grad.offsets = PackedFloat32Array([0.0, 1.0])
+	var gc := glow_color
+	grad.colors = PackedColorArray([Color(gc.r, gc.g, gc.b, 0.55), Color(gc.r, gc.g, gc.b, 0.0)])
+	var gtex := GradientTexture2D.new()
+	gtex.gradient = grad
+	gtex.width = 64
+	gtex.height = 64
+	gtex.fill = GradientTexture2D.FILL_RADIAL
+	gtex.fill_from = Vector2(0.5, 0.5)
+	gtex.fill_to = Vector2(1.0, 0.5)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.albedo_texture = gtex
+	var quad := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(3.4, 5.6)
+	quad.mesh = qm
+	quad.material_override = mat
+	quad.rotation.x = -PI / 2.0
+	quad.position = Vector3(0, 0.10, 0)
+	quad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(quad)  # child of car (not _body) so it stays flat

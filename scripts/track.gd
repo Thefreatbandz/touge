@@ -151,6 +151,14 @@ func _build_road(rng: RandomNumberGenerator) -> void:
 			var dc := Color(0.5, 0.44, 0.22)
 			_quad(p - s * 0.12 + up * 0.02, p + s * 0.12 + up * 0.02,
 				q - s * 0.12 + up * 0.02, q + s * 0.12 + up * 0.02, dc, up)
+		# rumble strips: alternating red/white blocks at both edges
+		var rum := Color(0.75, 0.12, 0.10) if (i / 2) % 2 == 0 else Color(0.80, 0.80, 0.82)
+		var r0 := 3.85
+		var r1 := 4.40
+		_quad(p - s * r1 + up * 0.025, p - s * r0 + up * 0.025,
+			q - s * r1 + up * 0.025, q - s * r0 + up * 0.025, rum, up)
+		_quad(p + s * r0 + up * 0.025, p + s * r1 + up * 0.025,
+			q + s * r0 + up * 0.025, q + s * r1 + up * 0.025, rum, up)
 		# guardrail bands (vertical ribbons, both sides)
 		var g := ROAD_HALF + 0.45
 		var rc := Color(0.30, 0.33, 0.37)
@@ -268,9 +276,10 @@ func _build_scenery(rng: RandomNumberGenerator) -> void:
 	_build_light_pools()
 	_build_rail_markers()
 	_build_sky_extras(rng)
+	_build_clouds(rng)
 
 func _build_gates() -> void:
-	for g in [[start_idx, Color(0.2, 1.0, 0.9)], [finish_idx, Color(1.0, 0.75, 0.2)]]:
+	for g in [[start_idx - 14, Color(0.2, 1.0, 0.9)], [finish_idx, Color(1.0, 0.75, 0.2)]]:
 		var i: int = g[0]
 		var tint: Color = g[1]
 		var gate := Node3D.new()
@@ -294,7 +303,7 @@ func _build_gates() -> void:
 		var q1 := p + s * 5.9 + Vector3(0, 5.2, 0)
 		_quad(q0, q1, q0 + Vector3(0, 1.4, 0), q1 + Vector3(0, 1.4, 0), tint, tangents[i])
 		_finish(gate, _mat_emit)
-		if int(g[0]) == start_idx:
+		if int(g[0]) == start_idx - 14:
 			var lab := Label3D.new()
 			lab.text = "TOUGE"
 			lab.font_size = 128
@@ -482,6 +491,28 @@ func _build_city(rng: RandomNumberGenerator) -> void:
 			var fw := d * 0.5 - 1.5
 			_quad(fc - tang * fw + up * 0.7, fc + tang * fw + up * 0.7,
 				fc - tang * fw + up * 3.1, fc + tang * fw + up * 3.1, shop_col, nrm)
+	# rooftop edge lighting: thin glowing perimeter on every block
+	for pb in placed:
+		var bp: Vector3 = pb[0]
+		var w: float = pb[2]
+		var h: float = pb[3]
+		var d: float = pb[4]
+		var yaw: float = pb[5]
+		var rx := _rot_y(Vector3.RIGHT, yaw)
+		var fz := _rot_y(Vector3.FORWARD, yaw)
+		var edge_col := Color(1.0, 0.72, 0.38)
+		var ey := h + 0.15
+		var t := 0.14
+		# 4 edges of the roof rectangle
+		for e in [[rx, fz, w, d], [-rx, fz, w, d], [fz, rx, d, w], [-fz, rx, d, w]]:
+			var nrm: Vector3 = e[0]
+			var tang: Vector3 = e[1]
+			var half: float = e[2] * 0.5
+			var off: float = e[3] * 0.5
+			var c := bp + nrm * off + Vector3(0, ey, 0)
+			_quad(c - tang * half - Vector3(0, t, 0), c + tang * half - Vector3(0, t, 0),
+				c - tang * half + Vector3(0, t, 0), c + tang * half + Vector3(0, t, 0),
+				edge_col, nrm)
 	_finish(self, _mat_emit)
 
 func _build_billboards(rng: RandomNumberGenerator) -> void:
@@ -600,6 +631,32 @@ func _build_sky_extras(rng: RandomNumberGenerator) -> void:
 	sun.material_override = sun_mat
 	sun.position = c + Vector3(420, 70, -480)
 	add_child(sun)
+	# additive halo around the sun
+	var grad := Gradient.new()
+	grad.offsets = PackedFloat32Array([0.0, 1.0])
+	grad.colors = PackedColorArray([
+		Color(1.0, 0.55, 0.20, 0.55), Color(1.0, 0.45, 0.15, 0.0)])
+	var gtex := GradientTexture2D.new()
+	gtex.gradient = grad
+	gtex.width = 128
+	gtex.height = 128
+	gtex.fill = GradientTexture2D.FILL_RADIAL
+	gtex.fill_from = Vector2(0.5, 0.5)
+	gtex.fill_to = Vector2(1.0, 0.5)
+	var halo_mat := StandardMaterial3D.new()
+	halo_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	halo_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	halo_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	halo_mat.albedo_texture = gtex
+	halo_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	halo_mat.disable_fog = true
+	var halo := MeshInstance3D.new()
+	var hqm := QuadMesh.new()
+	hqm.size = Vector2(260, 260)
+	halo.mesh = hqm
+	halo.material_override = halo_mat
+	halo.position = c + Vector3(420, 70, -480)
+	add_child(halo)
 	# faint early stars, fog-exempt
 	var star_mesh := BoxMesh.new()
 	star_mesh.size = Vector3(1.2, 1.2, 1.2)
@@ -756,6 +813,27 @@ func _build_crosswalks() -> void:
 			_quad(c - s * 3.4, c + s * 3.4, c - s * 3.4 + t * 0.75, c + s * 3.4 + t * 0.75,
 				Color(0.70, 0.73, 0.78), up)
 	_finish(self, _mat_flat)
+
+func _build_clouds(rng: RandomNumberGenerator) -> void:
+	# chunky PS1 clouds, warm-lit
+	var c := (points[0] + points[COUNT / 2]) * 0.5
+	var cloud_mat := StandardMaterial3D.new()
+	cloud_mat.albedo_color = Color(0.85, 0.55, 0.45)
+	cloud_mat.roughness = 1.0
+	_begin()
+	for ci in range(10):
+		var ang := rng.randf_range(0.0, TAU)
+		var rad := rng.randf_range(380.0, 620.0)
+		var base := c + Vector3(cos(ang) * rad, rng.randf_range(150.0, 260.0), sin(ang) * rad)
+		var yaw := rng.randf_range(0.0, TAU)
+		var puffs := rng.randi_range(3, 5)
+		for pi in range(puffs):
+			var off := Vector3(rng.randf_range(-22.0, 22.0), rng.randf_range(-4.0, 4.0),
+				rng.randf_range(-10.0, 10.0))
+			var sz := Vector3(rng.randf_range(18.0, 34.0), rng.randf_range(7.0, 12.0),
+				rng.randf_range(10.0, 16.0))
+			_box_at(base + _rot_y(off, yaw), sz, yaw, Color(0.85, 0.55, 0.45))
+	_finish(self, cloud_mat)
 
 # --- queries ----------------------------------------------------------------
 

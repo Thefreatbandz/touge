@@ -37,7 +37,7 @@ func generate(seed: int, rain := false) -> void:
 	var rng := RandomNumberGenerator.new()
 	var ok := false
 	var attempt := 0
-	while not ok and attempt < 10:
+	while not ok and attempt < 15:
 		rng.seed = seed + attempt * 7919
 		_layout(rng)
 		ok = _check_clearance()
@@ -227,11 +227,12 @@ func _layout(rng: RandomNumberGenerator) -> void:
 
 func _check_clearance() -> bool:
 	# no part of the road may come near a non-adjacent part (no overlaps/loops)
+	# 64m separation so different sections never visually overlap
 	for i in range(COUNT):
 		var pi := points[i]
 		for j in range(i + 30, COUNT):
 			var d2 := pi.distance_squared_to(points[j])
-			if d2 < 48.0 * 48.0:
+			if d2 < 64.0 * 64.0:
 				return false
 	# heading must never wind into a loop
 	return true

@@ -182,32 +182,86 @@ func _build_mesh() -> void:
 	add_child(_body)
 	var white := body_color
 	var black := Color(0.05, 0.05, 0.06)
-	var glass := Color(0.06, 0.09, 0.13)
-	# lower body (panda white)
-	_box(_body, Vector3(1.82, 0.62, 4.3), Vector3(0, 0.62, 0), white)
-	# black hood (panda style)
-	_box(_body, Vector3(1.84, 0.10, 1.35), Vector3(0, 0.95, -1.42), black)
-	# cabin / glasshouse
-	_box(_body, Vector3(1.58, 0.52, 2.05), Vector3(0, 1.12, 0.25), glass)
-	# roof panel (white)
-	_box(_body, Vector3(1.60, 0.08, 1.15), Vector3(0, 1.40, 0.30), white)
-	# trunk spoiler
-	_box(_body, Vector3(1.70, 0.07, 0.42), Vector3(0, 1.18, 1.95), black)
-	_box(_body, Vector3(0.08, 0.28, 0.30), Vector3(-0.70, 1.02, 1.95), black)
-	_box(_body, Vector3(0.08, 0.28, 0.30), Vector3(0.70, 1.02, 1.95), black)
-	# bumpers
-	_box(_body, Vector3(1.88, 0.34, 0.35), Vector3(0, 0.42, -2.12), black)
-	_box(_body, Vector3(1.88, 0.34, 0.35), Vector3(0, 0.42, 2.12), black)
-	# pop-up headlights (up) + glow
-	_box(_body, Vector3(0.42, 0.16, 0.42), Vector3(-0.58, 1.00, -1.95), black)
-	_box(_body, Vector3(0.42, 0.16, 0.42), Vector3(0.58, 1.00, -1.95), black)
-	_box(_body, Vector3(0.34, 0.10, 0.06), Vector3(-0.58, 1.00, -2.16),
-		Color(1.0, 0.95, 0.75), 2.5)
-	_box(_body, Vector3(0.34, 0.10, 0.06), Vector3(0.58, 1.00, -2.16),
-		Color(1.0, 0.95, 0.75), 2.5)
-	# taillight bar
-	_box(_body, Vector3(1.55, 0.14, 0.06), Vector3(0, 0.78, 2.30),
+	var glass := Color(0.05, 0.08, 0.12)
+	var dark := Color(0.08, 0.08, 0.09)
+	# === main hull: tapered three-section sports car ===
+	# rear haunches (widest)
+	_box(_body, Vector3(1.84, 0.58, 1.70), Vector3(0, 0.60, 1.15), white)
+	# mid body
+	_box(_body, Vector3(1.78, 0.54, 1.60), Vector3(0, 0.58, -0.25), white)
+	# nose (tapered, lower)
+	_box(_body, Vector3(1.62, 0.46, 1.10), Vector3(0, 0.54, -1.55), white)
+	# === hood: sloped to the nose ===
+	var hood := _box(_body, Vector3(1.58, 0.07, 1.30), Vector3(0, 0.82, -1.35), white)
+	hood.rotation.x = 0.10
+	var vent := _box(_body, Vector3(0.90, 0.05, 0.70), Vector3(0, 0.88, -1.30), black)
+	vent.rotation.x = 0.10
+	# === front bumper + grille + lip ===
+	_box(_body, Vector3(1.70, 0.32, 0.40), Vector3(0, 0.40, -2.05), black)
+	_box(_body, Vector3(1.10, 0.16, 0.06), Vector3(0, 0.48, -2.26), dark)
+	_box(_body, Vector3(1.74, 0.07, 0.32), Vector3(0, 0.20, -2.10), black)
+	for sx in [-1.0, 1.0]:
+		var can := _box(_body, Vector3(0.22, 0.04, 0.30), Vector3(sx * 0.78, 0.52, -2.08), black)
+		can.rotation.z = sx * -0.15
+	# === widebody fender flares ===
+	for sx in [-1.0, 1.0]:
+		_box(_body, Vector3(0.18, 0.42, 1.10), Vector3(sx * 0.92, 0.62, -1.35), white)
+		_box(_body, Vector3(0.18, 0.46, 1.20), Vector3(sx * 0.94, 0.62, 1.15), white)
+	# === greenhouse: raked windshield, roof, fastback rear glass ===
+	var ws := _box(_body, Vector3(1.48, 0.05, 1.15), Vector3(0, 1.18, -0.45), glass)
+	ws.rotation.x = -0.48
+	_box(_body, Vector3(1.50, 0.07, 1.05), Vector3(0, 1.46, 0.38), white)
+	var rw := _box(_body, Vector3(1.46, 0.05, 1.25), Vector3(0, 1.20, 1.18), glass)
+	rw.rotation.x = 0.42
+	for sx in [-1.0, 1.0]:
+		_box(_body, Vector3(0.04, 0.38, 1.05), Vector3(sx * 0.76, 1.18, 0.38), glass)
+		var ap := _box(_body, Vector3(0.08, 0.55, 0.08), Vector3(sx * 0.72, 1.20, -0.55), white)
+		ap.rotation.x = -0.48
+	# === trunk + rear bumper + diffuser ===
+	_box(_body, Vector3(1.78, 0.42, 0.75), Vector3(0, 0.72, 1.95), white)
+	_box(_body, Vector3(1.84, 0.32, 0.38), Vector3(0, 0.40, 2.18), black)
+	_box(_body, Vector3(1.55, 0.14, 0.30), Vector3(0, 0.26, 2.22), black)
+	for fx in [-0.45, -0.15, 0.15, 0.45]:
+		_box(_body, Vector3(0.05, 0.16, 0.28), Vector3(fx, 0.26, 2.22), dark)
+	# === GT wing: swan-neck stands + endplates ===
+	var wing := _box(_body, Vector3(1.72, 0.05, 0.48), Vector3(0, 1.32, 2.02), black)
+	wing.rotation.x = -0.10
+	for sx in [-1.0, 1.0]:
+		_box(_body, Vector3(0.05, 0.30, 0.55), Vector3(sx * 0.86, 1.20, 2.02), black)
+		_box(_body, Vector3(0.07, 0.32, 0.10), Vector3(sx * 0.45, 1.08, 2.02), black)
+	# === lights: flush headlights + full-width tail bar ===
+	for sx in [-1.0, 1.0]:
+		_box(_body, Vector3(0.48, 0.14, 0.06), Vector3(sx * 0.58, 0.66, -2.05), black)
+		var hl := _box(_body, Vector3(0.42, 0.10, 0.08), Vector3(sx * 0.58, 0.68, -2.08),
+			Color(1.0, 0.95, 0.75), 2.5)
+		hl.rotation.x = 0.15
+	_box(_body, Vector3(1.60, 0.12, 0.06), Vector3(0, 0.82, 2.37),
 		Color(1.0, 0.08, 0.08), 2.0)
+	_box(_body, Vector3(0.30, 0.08, 0.06), Vector3(0, 0.68, 2.37),
+		Color(0.9, 0.9, 0.95), 1.0)
+	# === side skirts ===
+	for sx in [-1.0, 1.0]:
+		_box(_body, Vector3(0.14, 0.16, 2.20), Vector3(sx * 0.93, 0.30, 0.10), black)
+	# === mirrors ===
+	for sx in [-1.0, 1.0]:
+		_box(_body, Vector3(0.16, 0.10, 0.22), Vector3(sx * 0.98, 1.18, -0.35), white)
+		_box(_body, Vector3(0.05, 0.08, 0.06), Vector3(sx * 0.90, 1.14, -0.35), black)
+	# === dual exhausts ===
+	for sx in [-1.0, 1.0]:
+		var ex := MeshInstance3D.new()
+		var em := CylinderMesh.new()
+		em.top_radius = 0.07
+		em.bottom_radius = 0.07
+		em.height = 0.18
+		ex.mesh = em
+		var exm := StandardMaterial3D.new()
+		exm.albedo_color = Color(0.65, 0.67, 0.70)
+		exm.metallic = 0.85
+		exm.roughness = 0.30
+		ex.material_override = exm
+		ex.position = Vector3(sx * 0.38, 0.32, 2.38)
+		ex.rotation.x = PI / 2.0
+		_body.add_child(ex)
 	# wheels
 	_wheels.clear()
 	var tire := Color(0.04, 0.04, 0.045)

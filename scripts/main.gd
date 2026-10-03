@@ -280,6 +280,11 @@ func _follow_cam(dt: float) -> void:
 		_cam.look_at(_look_s)
 	var spd_ratio := clampf(_car.vel.length() / 56.0, 0.0, 1.0)
 	_cam.fov = lerpf(_cam.fov, 68.0 + spd_ratio * 14.0, 1.0 - exp(-4.0 * dt))
+	# subtle speed shake
+	if _state == State.RACING and spd_ratio > 0.55:
+		var sh := (spd_ratio - 0.55) * 0.35
+		var t := Time.get_ticks_msec() * 0.001
+		_cam.global_position += Vector3(sin(t * 39.0) * sh * 0.4, cos(t * 47.0) * sh * 0.3, 0)
 
 func _ai_inputs() -> Array:
 	# pure-pursuit rival: chase a lookahead point, brake for curvature, rubber-band

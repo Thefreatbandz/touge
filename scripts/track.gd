@@ -17,6 +17,8 @@ var finish_idx := COUNT - 12
 var _mat_flat: StandardMaterial3D
 var _mat_emit: StandardMaterial3D
 var _mat_gray: StandardMaterial3D
+var _blimp: Node3D
+var _blimp_angle := 0.0
 
 func generate(seed: int) -> void:
 	_mat_flat = StandardMaterial3D.new()
@@ -277,6 +279,10 @@ func _build_scenery(rng: RandomNumberGenerator) -> void:
 	_build_rail_markers()
 	_build_sky_extras(rng)
 	_build_clouds(rng)
+	_build_gantries(rng)
+	_build_skyline(rng)
+	_build_blimp(rng)
+	_build_studs()
 
 func _build_gates() -> void:
 	for g in [[start_idx - 14, Color(0.2, 1.0, 0.9)], [finish_idx, Color(1.0, 0.75, 0.2)]]:
@@ -812,7 +818,147 @@ func _build_crosswalks() -> void:
 			var c := p + t * (k * 1.5) + up * 0.02
 			_quad(c - s * 3.4, c + s * 3.4, c - s * 3.4 + t * 0.75, c + s * 3.4 + t * 0.75,
 				Color(0.70, 0.73, 0.78), up)
+	# checkered start line
+	var sp: Vector3 = points[start_idx]
+	var ss: Vector3 = sides[start_idx]
+	var st: Vector3 = tangents[start_idx]
+	for row in range(2):
+		for col in range(10):
+			var cc := sp + st * (row * 0.9 - 0.45) + ss * (col * 0.9 - 4.05) + up * 0.03
+			var sqc := Color(0.85, 0.85, 0.86) if (row + col) % 2 == 0 else Color(0.05, 0.05, 0.06)
+			_quad(cc - ss * 0.45, cc + ss * 0.45,
+				cc - ss * 0.45 + st * 0.9, cc + ss * 0.45 + st * 0.9, sqc, up)
 	_finish(self, _mat_flat)
+
+func _build_gantries(rng: RandomNumberGenerator) -> void:
+	# overhead highway signs: poles + beam + green panels + text
+	var texts := ["TOUGE", "DOWNTOWN", "HARBOR", "EXIT 90"]
+	var spots: Array = []  # [pos, side, tangent]
+	var n := 0
+	var guard := 0
+	while n < 4 and guard < 500:
+		guard += 1
+		var i := rng.randi_range(40, COUNT - 40)
+		var bp: Vector3 = points[i]
+		var s: Vector3 = sides[i]
+		var t: Vector3 = tangents[i]
+		var ok := true
+		for sgn: float in [-1.0, 1.0]:
+			var pp := bp + s * (sgn * 6.8)
+			for j in range(maxi(0, i - 8), mini(COUNT, i + 9)):
+				var dx := pp.x - points[j].x
+				var dz := pp.z - points[j].z
+				if dx * dx + dz * dz < 42.0:
+					ok = false
+					break
+		if not ok:
+			continue
+		n += 1
+		spots.append([bp, s, t])
+	_begin()
+	var post_c := Color(0.14, 0.15, 0.17)
+	for sp in spots:
+		var bp: Vector3 = sp[0]
+		var s: Vector3 = sp[1]
+		for sgn: float in [-1.0, 1.0]:
+			_box_at(bp + s * (sgn * 6.8) + Vector3(0, 4.0, 0), Vector3(0.4, 8.0, 0.4), 0.0, post_c)
+		# beam across (long axis spans the road along the side vector)
+		_box_at(bp + Vector3(0, 7.8, 0), Vector3(14.5, 0.5, 0.5), atan2(-s.z, s.x), post_c)
+	_finish(self, _mat_flat)
+	_begin()
+	var up := Vector3(0, 1, 0)
+	for spi in range(spots.size()):
+		var bp: Vector3 = spots[spi][0]
+		var s: Vector3 = spots[spi][1]
+		var t: Vector3 = spots[spi][2]
+		var to_driver := -t
+		for panel_i in range(2):
+			var off := -3.4 + panel_i * 6.8
+			var pc := bp + s * off + Vector3(0, 6.4, 0)
+			var hw := 2.9
+			var hh := 0.85
+			# green panel
+			_quad(pc - s * hw - up * hh, pc + s * hw - up * hh,
+				pc - s * hw + up * hh, pc + s * hw + up * hh,
+				Color(0.04, 0.28, 0.14), to_driver)
+			# white border
+			var bt := 0.09
+			_quad(pc - s * (hw + bt) + up * (hh - bt), pc + s * (hw + bt) + up * (hh - bt),
+				pc - s * (hw + bt) + up * hh, pc + s * (hw + bt) + up * hh,
+				Color(0.85, 0.88, 0.85), to_driver)
+	_finish(self, _mat_emit)
+	# text on panels
+	for spi in range(spots.size()):
+		var bp: Vector3 = spots[spi][0]
+		var s: Vector3 = spots[spi][1]
+		var t: Vector3 = spots[spi][2]
+		for panel_i in range(2):
+			var off := -3.4 + panel_i * 6.8
+			var lab := Label3D.new()
+			lab.text = texts[(spi * 2 + panel_i) % texts.size()]
+			lab.font_size = 64
+			lab.pixel_size = 0.022
+			lab.modulate = Color(0.92, 0.95, 0.92)
+			lab.shaded = false
+			lab.rotation.y = atan2(-t.x, -t.z)
+			lab.position = bp + s * off + Vector3(0, 6.4, 0) - t * 0.15
+			add_child(lab)
+
+func _build_skyline(rng: RandomNumberGenerator) -> void:
+	# distant silhouette towers for depth
+	var c := (points[0] + points[COUNT / 2]) * 0.5
+	_begin()
+	for k in range(28):
+		var ang := TAU * k / 28.0 + rng.randf_range(-0.1, 0.1)
+		var rad := rng.randf_range(300.0, 430.0)
+		var w := rng.randf_range(25.0, 55.0)
+		var h := rng.randf_range(60.0, 130.0)
+		var d := rng.randf_range(25.0, 55.0)
+		var bp := c + Vector3(cos(ang) * rad, 0, sin(ang) * rad)
+		var shade := rng.randf_range(0.8, 1.2)
+		_box_at(bp + Vector3(0, h * 0.5, 0), Vector3(w, h, d), rng.randf_range(0, TAU),
+			Color(0.10 * shade, 0.07 * shade, 0.12 * shade))
+	_finish(self, _mat_flat)
+
+func _build_blimp(rng: RandomNumberGenerator) -> void:
+	# slow advertising blimp with a neon sign
+	var c := (points[0] + points[COUNT / 2]) * 0.5
+	_blimp = Node3D.new()
+	_blimp.position = c + Vector3(120, 120, -80)
+	add_child(_blimp)
+	_begin()
+	var body_c := Color(0.55, 0.30, 0.35)
+	_box_at(Vector3(0, 0, 0), Vector3(7, 7, 22), 0.0, body_c)
+	_box_at(Vector3(0, 1.5, 9.5), Vector3(0.5, 5, 4), 0.0, body_c)   # top fin
+	_box_at(Vector3(0, 0, 10.5), Vector3(6, 0.5, 3.5), 0.0, body_c)  # tail wings
+	_box_at(Vector3(0, -4.6, 2), Vector3(3, 2.2, 6), 0.0, Color(0.12, 0.12, 0.15))  # gondola
+	_finish(_blimp, _mat_flat)
+	_begin()
+	_quad(Vector3(-3.6, -1, -8), Vector3(3.6, -1, -8), Vector3(-3.6, 1.6, -8), Vector3(3.6, 1.6, -8),
+		Color(1.0, 0.45, 0.15), Vector3(0, 0, -1))
+	_quad(Vector3(3.6, -1, 8), Vector3(-3.6, -1, 8), Vector3(3.6, 1.6, 8), Vector3(-3.6, 1.6, 8),
+		Color(1.0, 0.45, 0.15), Vector3(0, 0, 1))
+	_finish(_blimp, _mat_emit)
+	var lab := Label3D.new()
+	lab.text = "TOUGE"
+	lab.font_size = 96
+	lab.pixel_size = 0.03
+	lab.modulate = Color(1.0, 0.85, 0.4)
+	lab.outline_size = 14
+	lab.outline_modulate = Color(0, 0, 0, 1)
+	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	lab.shaded = false
+	lab.position = Vector3(0, 0.5, -11.5)
+	_blimp.add_child(lab)
+	_blimp_angle = rng.randf_range(0, TAU)
+
+func _process(dt: float) -> void:
+	# blimp slow orbit
+	if _blimp:
+		_blimp_angle += dt * 0.02
+		var c := (points[0] + points[COUNT / 2]) * 0.5
+		_blimp.position = c + Vector3(cos(_blimp_angle) * 150.0, 120.0, sin(_blimp_angle) * 150.0)
+		_blimp.rotation.y = -_blimp_angle
 
 func _build_clouds(rng: RandomNumberGenerator) -> void:
 	# chunky PS1 clouds, warm-lit
@@ -834,6 +980,22 @@ func _build_clouds(rng: RandomNumberGenerator) -> void:
 				rng.randf_range(10.0, 16.0))
 			_box_at(base + _rot_y(off, yaw), sz, yaw, Color(0.85, 0.55, 0.45))
 	_finish(self, cloud_mat)
+
+func _build_studs() -> void:
+	# glowing road studs along the edge lines
+	_begin()
+	var up := Vector3(0, 1, 0)
+	var k := 0
+	while k < COUNT - 1:
+		for sgn: float in [-1.0, 1.0]:
+			var sp: Vector3 = points[k] + sides[k] * (sgn * 4.45) + up * 0.06
+			var t: Vector3 = tangents[k]
+			var s := 0.09
+			_quad(sp - t * s - sides[k] * s, sp + t * s - sides[k] * s,
+				sp - t * s + sides[k] * s, sp + t * s + sides[k] * s,
+				Color(1.0, 0.80, 0.40), up)
+		k += 2
+	_finish(self, _mat_emit)
 
 # --- queries ----------------------------------------------------------------
 

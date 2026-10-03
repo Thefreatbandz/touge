@@ -55,7 +55,7 @@ func _build_world_fx() -> void:
 	env.fog_light_color = Color(0.020, 0.036, 0.072)
 	env.fog_density = 0.0052
 	env.glow_enabled = true
-	env.glow_intensity = 0.6
+	env.glow_intensity = 0.85
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)

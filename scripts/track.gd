@@ -206,6 +206,7 @@ func _build_scenery(rng: RandomNumberGenerator) -> void:
 	tree_mesh.bottom_radius = 2.6
 	tree_mesh.height = 8.0
 	var trees: Array[Transform3D] = []
+	var tree_tops: Array[Transform3D] = []
 	var placed := 0
 	var guard := 0
 	while placed < 380 and guard < 4000:
@@ -226,11 +227,17 @@ func _build_scenery(rng: RandomNumberGenerator) -> void:
 			continue
 		var sc := rng.randf_range(0.7, 1.5)
 		trees.append(Transform3D(Basis().scaled(Vector3(sc, sc, sc)), tp + Vector3(0, 4.0 * sc, 0)))
+		var sc2 := sc * 0.62
+		tree_tops.append(Transform3D(Basis().scaled(Vector3(sc2, sc2, sc2)), tp + Vector3(0, 7.0 * sc, 0)))
 		placed += 1
 	var tree_mat := StandardMaterial3D.new()
 	tree_mat.albedo_color = Color(0.020, 0.055, 0.032)
 	tree_mat.roughness = 1.0
 	_multimesh_box(self, tree_mesh, tree_mat, trees)
+	var tree_top_mat := StandardMaterial3D.new()
+	tree_top_mat.albedo_color = Color(0.028, 0.070, 0.040)
+	tree_top_mat.roughness = 1.0
+	_multimesh_box(self, tree_mesh, tree_top_mat, tree_tops)
 
 	# streetlights: poles + emissive lamp heads, alternating sides
 	var pole_mesh := BoxMesh.new()
@@ -255,6 +262,10 @@ func _build_scenery(rng: RandomNumberGenerator) -> void:
 	_build_billboards(rng)
 	_build_poles_wires(rng)
 	_build_parked_cars(rng)
+	_build_vending(rng)
+	_build_cones(rng)
+	_build_crosswalks()
+	_build_light_pools()
 	_build_rail_markers()
 	_build_sky_extras(rng)
 
@@ -379,6 +390,11 @@ func _build_city(rng: RandomNumberGenerator) -> void:
 				Color(0.20, 0.15, 0.11))
 			_box_at(base + Vector3(0, 5.9, 0), Vector3(4.1, 0.5, 4.1), yaw,
 				Color(0.14, 0.10, 0.08))
+		# stepped setback tower on tall blocks
+		if h > 30.0 and rng.randf() < 0.5:
+			var sh := h * 0.34
+			_box_at(bp + Vector3(0, h + sh * 0.5, 0), Vector3(w * 0.62, sh, d * 0.62), yaw,
+				Color(col.r * shade * 0.92, col.g * shade * 0.92, col.b * shade * 0.92))
 	_finish(self, _mat_flat)
 	# windows + rooftop beacons (emissive, one mesh)
 	_begin()
@@ -448,6 +464,24 @@ func _build_city(rng: RandomNumberGenerator) -> void:
 			var tang2 := nrm.cross(up).normalized()
 			_quad(fc - tang2 * hw2 + up * sy0, fc + tang2 * hw2 + up * sy0,
 				fc - tang2 * hw2 + up * sy1, fc + tang2 * hw2 + up * sy1, scol, nrm)
+	# ground-floor storefront glow on most blocks
+	for pb in placed:
+		if rng.randf() > 0.62:
+			continue
+		var bp: Vector3 = pb[0]
+		var w: float = pb[2]
+		var d: float = pb[4]
+		var yaw: float = pb[5]
+		var rx := _rot_y(Vector3.RIGHT, yaw)
+		var up := Vector3(0, 1, 0)
+		var shop_col := Color(1.0, 0.78, 0.45) if rng.randf() < 0.7 else Color(0.65, 0.85, 1.0)
+		for fsgn: float in [-1.0, 1.0]:
+			var fc := bp + rx * (fsgn * (w * 0.5 + 0.18))
+			var nrm := rx * fsgn
+			var tang := nrm.cross(up).normalized()
+			var fw := d * 0.5 - 1.5
+			_quad(fc - tang * fw + up * 0.7, fc + tang * fw + up * 0.7,
+				fc - tang * fw + up * 3.1, fc + tang * fw + up * 3.1, shop_col, nrm)
 	_finish(self, _mat_emit)
 
 func _wire(p1: Vector3, p2: Vector3, thick: float, col: Color) -> void:
@@ -629,6 +663,120 @@ func _build_parked_cars(rng: RandomNumberGenerator) -> void:
 		var col: Color = cols[rng.randi_range(0, cols.size() - 1)]
 		_box_at(bp + Vector3(0, 0.55, 0), Vector3(1.8, 0.75, 4.2), yaw, col)
 		_box_at(bp + Vector3(0, 1.15, 0), Vector3(1.6, 0.55, 2.2), yaw, Color(0.05, 0.07, 0.10))
+	_finish(self, _mat_flat)
+
+func _build_light_pools() -> void:
+	# soft warm pools under each streetlamp (additive radial gradient)
+	var grad := Gradient.new()
+	grad.offsets = PackedFloat32Array([0.0, 1.0])
+	grad.colors = PackedColorArray([
+		Color(1.0, 0.82, 0.50, 0.42), Color(1.0, 0.82, 0.50, 0.0)])
+	var gtex := GradientTexture2D.new()
+	gtex.gradient = grad
+	gtex.width = 128
+	gtex.height = 128
+	gtex.fill = GradientTexture2D.FILL_RADIAL
+	gtex.fill_from = Vector2(0.5, 0.5)
+	gtex.fill_to = Vector2(1.0, 0.5)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.albedo_texture = gtex
+	var quad := QuadMesh.new()
+	quad.size = Vector2(11, 11)
+	var xf: Array[Transform3D] = []
+	var sgn := 1.0
+	for i in range(10, COUNT - 10, 17):
+		sgn = -sgn
+		var lp: Vector3 = points[i] + sides[i] * (sgn * 6.6)
+		xf.append(Transform3D(Basis().rotated(Vector3.RIGHT, -PI * 0.5), lp + Vector3(0, 0.05, 0)))
+	_multimesh_box(self, quad, mat, xf)
+
+func _build_vending(rng: RandomNumberGenerator) -> void:
+	# glowing vending machines by the sidewalk
+	var spots: Array = []  # [pos, yaw, to_road]
+	var n := 0
+	var guard := 0
+	while n < 7 and guard < 400:
+		guard += 1
+		var i := rng.randi_range(20, COUNT - 20)
+		var sgn := -1.0 if rng.randf() < 0.5 else 1.0
+		var bp: Vector3 = points[i] + sides[i] * (sgn * 7.4)
+		var ok := true
+		for j in range(maxi(0, i - 6), mini(COUNT, i + 7)):
+			var dx := bp.x - points[j].x
+			var dz := bp.z - points[j].z
+			if dx * dx + dz * dz < 49.0:
+				ok = false
+				break
+		if not ok:
+			continue
+		n += 1
+		spots.append([bp, float(yaws[i]), -sides[i] * sgn])
+	_begin()
+	for sp in spots:
+		var bp: Vector3 = sp[0]
+		var yaw: float = sp[1]
+		_box_at(bp + Vector3(0, 0.95, 0), Vector3(1.15, 1.9, 0.85), yaw, Color(0.05, 0.07, 0.10))
+	_finish(self, _mat_flat)
+	_begin()
+	for sp in spots:
+		var bp: Vector3 = sp[0]
+		var to_road: Vector3 = sp[2]
+		var side := to_road.cross(Vector3.UP).normalized()
+		# bright front panel facing the road
+		var fc := bp + to_road * 0.45 + Vector3(0, 1.05, 0)
+		var hw := 0.45
+		var hh := 0.75
+		_quad(fc - side * hw - Vector3(0, hh, 0), fc + side * hw - Vector3(0, hh, 0),
+			fc - side * hw + Vector3(0, hh, 0), fc + side * hw + Vector3(0, hh, 0),
+			Color(0.65, 0.90, 1.0), to_road)
+		# top glow strip
+		var tc := bp + Vector3(0, 1.92, 0)
+		_quad(tc - side * 0.55, tc + side * 0.55,
+			tc - side * 0.55 + Vector3(0, 0.12, 0), tc + side * 0.55 + Vector3(0, 0.12, 0),
+			Color(0.9, 0.95, 1.0), Vector3.UP)
+	_finish(self, _mat_emit)
+
+func _build_cones(rng: RandomNumberGenerator) -> void:
+	# roadwork cone clusters on the shoulder
+	var cone_mesh := CylinderMesh.new()
+	cone_mesh.top_radius = 0.06
+	cone_mesh.bottom_radius = 0.32
+	cone_mesh.height = 0.75
+	var cone_mat := StandardMaterial3D.new()
+	cone_mat.albedo_color = Color(0.95, 0.35, 0.08)
+	cone_mat.roughness = 0.8
+	var xf: Array[Transform3D] = []
+	for c in range(2):
+		var i0 := rng.randi_range(40, COUNT - 70)
+		var sgn := -1.0 if rng.randf() < 0.5 else 1.0
+		for k in range(6):
+			var i := i0 + k * 3
+			var bp: Vector3 = points[i] + sides[i] * (sgn * rng.randf_range(5.6, 6.8))
+			var ok := true
+			for j in range(maxi(0, i - 4), mini(COUNT, i + 5)):
+				var dx := bp.x - points[j].x
+				var dz := bp.z - points[j].z
+				if dx * dx + dz * dz < 27.0:
+					ok = false
+					break
+			if ok:
+				xf.append(Transform3D(Basis(), bp + Vector3(0, 0.38, 0)))
+	_multimesh_box(self, cone_mesh, cone_mat, xf)
+
+func _build_crosswalks() -> void:
+	_begin()
+	var up := Vector3(0, 1, 0)
+	for gi in [start_idx, finish_idx]:
+		var p: Vector3 = points[gi]
+		var s: Vector3 = sides[gi]
+		var t: Vector3 = tangents[gi]
+		for k in range(-2, 3):
+			var c := p + t * (k * 1.5) + up * 0.02
+			_quad(c - s * 3.4, c + s * 3.4, c - s * 3.4 + t * 0.75, c + s * 3.4 + t * 0.75,
+				Color(0.70, 0.73, 0.78), up)
 	_finish(self, _mat_flat)
 
 # --- queries ----------------------------------------------------------------

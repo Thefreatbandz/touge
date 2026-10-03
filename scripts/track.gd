@@ -254,6 +254,7 @@ func _build_scenery(rng: RandomNumberGenerator) -> void:
 
 	_build_billboards(rng)
 	_build_poles_wires(rng)
+	_build_parked_cars(rng)
 	_build_rail_markers()
 	_build_sky_extras(rng)
 
@@ -282,6 +283,19 @@ func _build_gates() -> void:
 		var q1 := p + s * 5.9 + Vector3(0, 5.2, 0)
 		_quad(q0, q1, q0 + Vector3(0, 1.4, 0), q1 + Vector3(0, 1.4, 0), tint, tangents[i])
 		_finish(gate, _mat_emit)
+		if int(g[0]) == start_idx:
+			var lab := Label3D.new()
+			lab.text = "TOUGE"
+			lab.font_size = 128
+			lab.pixel_size = 0.02
+			lab.modulate = Color(1.0, 0.95, 0.9)
+			lab.outline_size = 18
+			lab.outline_modulate = Color(0, 0, 0, 1)
+			lab.shaded = false
+			var tan: Vector3 = tangents[i]
+			lab.rotation.y = atan2(tan.x, tan.z)
+			lab.position = p + Vector3(0, 5.95, 0)
+			gate.add_child(lab)
 
 func _rot_y(v: Vector3, yaw: float) -> Vector3:
 	var sy := sin(yaw)
@@ -352,6 +366,19 @@ func _build_city(rng: RandomNumberGenerator) -> void:
 		var shade := rng.randf_range(0.85, 1.15)
 		_box_at(bp + Vector3(0, h * 0.5, 0), Vector3(w, h, d), yaw,
 			Color(col.r * shade, col.g * shade, col.b * shade))
+		# rooftop water tower on some blocks (chunky PS1 silhouette)
+		if rng.randf() < 0.35:
+			var tw := Vector3(rng.randf_range(-w * 0.22, w * 0.22), 0,
+				rng.randf_range(-d * 0.22, d * 0.22))
+			var base := bp + _rot_y(tw, yaw) + Vector3(0, h, 0)
+			for lx in [-1.2, 1.2]:
+				for lz in [-1.2, 1.2]:
+					_box_at(base + _rot_y(Vector3(lx, 1.5, lz), yaw),
+						Vector3(0.28, 3.0, 0.28), yaw, Color(0.16, 0.12, 0.09))
+			_box_at(base + Vector3(0, 4.2, 0), Vector3(3.8, 2.6, 3.8), yaw,
+				Color(0.20, 0.15, 0.11))
+			_box_at(base + Vector3(0, 5.9, 0), Vector3(4.1, 0.5, 4.1), yaw,
+				Color(0.14, 0.10, 0.08))
 	_finish(self, _mat_flat)
 	# windows + rooftop beacons (emissive, one mesh)
 	_begin()
@@ -395,6 +422,32 @@ func _build_city(rng: RandomNumberGenerator) -> void:
 					_quad(wp - hu - hv, wp + hu - hv, wp - hu + hv, wp + hu + hv, wc, n)
 		if h > 30.0:
 			_box_at(bp + Vector3(0, h + 0.4, 0), Vector3(0.9, 0.9, 0.9), 0.0, Color(1.0, 0.12, 0.10))
+	# vertical neon signs on a few road-facing blocks
+	var sign_cols := [Color(1.0, 0.25, 0.6), Color(0.25, 1.0, 0.9), Color(1.0, 0.8, 0.2),
+		Color(0.5, 0.4, 1.0)]
+	var nsign := 0
+	for pb in placed:
+		if nsign >= 14:
+			break
+		if rng.randf() > 0.3:
+			continue
+		nsign += 1
+		var bp: Vector3 = pb[0]
+		var w: float = pb[2]
+		var h: float = pb[3]
+		var yaw: float = pb[5]
+		var rx := _rot_y(Vector3.RIGHT, yaw)
+		var scol: Color = sign_cols[rng.randi_range(0, sign_cols.size() - 1)]
+		for fsgn: float in [-1.0, 1.0]:
+			var fc := bp + rx * (fsgn * (w * 0.5 + 0.25))
+			var nrm := rx * fsgn
+			var sy0 := h * 0.35
+			var sy1 := minf(h - 2.0, sy0 + 6.0)
+			var hw2 := 0.7
+			var up := Vector3(0, 1, 0)
+			var tang2 := nrm.cross(up).normalized()
+			_quad(fc - tang2 * hw2 + up * sy0, fc + tang2 * hw2 + up * sy0,
+				fc - tang2 * hw2 + up * sy1, fc + tang2 * hw2 + up * sy1, scol, nrm)
 	_finish(self, _mat_emit)
 
 func _wire(p1: Vector3, p2: Vector3, thick: float, col: Color) -> void:
@@ -549,6 +602,34 @@ func _build_sky_extras(rng: RandomNumberGenerator) -> void:
 		var h := rng.randf_range(170.0, 400.0)
 		xf.append(Transform3D(Basis(), c + Vector3(cos(ang) * rad, h, sin(ang) * rad)))
 	_multimesh_box(self, star_mesh, star_mat, xf)
+
+func _build_parked_cars(rng: RandomNumberGenerator) -> void:
+	_begin()
+	var cols := [Color(0.35, 0.08, 0.08), Color(0.08, 0.12, 0.35), Color(0.55, 0.55, 0.58),
+		Color(0.10, 0.10, 0.12), Color(0.45, 0.30, 0.08)]
+	var n := 0
+	var guard := 0
+	while n < 10 and guard < 800:
+		guard += 1
+		var i := rng.randi_range(20, COUNT - 20)
+		var sgn := -1.0 if rng.randf() < 0.5 else 1.0
+		var lat := sgn * rng.randf_range(9.5, 14.0)
+		var bp := points[i] + sides[i] * lat
+		var ok := true
+		for j in range(maxi(0, i - 8), mini(COUNT, i + 9)):
+			var dx := bp.x - points[j].x
+			var dz := bp.z - points[j].z
+			if dx * dx + dz * dz < 64.0:
+				ok = false
+				break
+		if not ok:
+			continue
+		n += 1
+		var yaw: float = yaws[i] + rng.randf_range(-0.15, 0.15)
+		var col: Color = cols[rng.randi_range(0, cols.size() - 1)]
+		_box_at(bp + Vector3(0, 0.55, 0), Vector3(1.8, 0.75, 4.2), yaw, col)
+		_box_at(bp + Vector3(0, 1.15, 0), Vector3(1.6, 0.55, 2.2), yaw, Color(0.05, 0.07, 0.10))
+	_finish(self, _mat_flat)
 
 # --- queries ----------------------------------------------------------------
 

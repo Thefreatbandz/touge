@@ -20,6 +20,7 @@ var drifting := false
 var slip_deg := 0.0
 var drift_score := 0.0
 var active := false           # false during countdown/title
+var body_color := Color(0.92, 0.92, 0.94)  # set before setup() for rival paint
 
 var _body: Node3D
 var _wheels: Array[Node3D] = []
@@ -161,7 +162,7 @@ func _build_mesh() -> void:
 		_body.queue_free()
 	_body = Node3D.new()
 	add_child(_body)
-	var white := Color(0.92, 0.92, 0.94)
+	var white := body_color
 	var black := Color(0.05, 0.05, 0.06)
 	var glass := Color(0.06, 0.09, 0.13)
 	# lower body (panda white)

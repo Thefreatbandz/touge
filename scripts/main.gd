@@ -10,9 +10,11 @@ enum State { TITLE, COUNTDOWN, RACING, FINISHED }
 var _state := State.TITLE
 var _track: TrackScript
 var _car: CarScript
+var _rival: CarScript
 var _cam: Camera3D
 var _hud: HudScript
 var _smoke: CPUParticles3D
+var _rival_smoke: CPUParticles3D
 var _look_s := Vector3.ZERO
 var _count_t := 0.0
 var _count_n := 0
@@ -21,6 +23,12 @@ var _seed := 0
 var _best := 0.0
 var _title_orbit := 0.0
 var _go_t := 0.0
+var _player_done := false
+var _rival_done := false
+var _player_time := 0.0
+var _rival_time := 0.0
+var _end_t := 0.0
+var _rival_msg_t := -1.0
 
 func _ready() -> void:
 	_build_world_fx()
@@ -66,25 +74,39 @@ func _build_race() -> void:
 		_track.queue_free()
 	if _car:
 		_car.queue_free()
+	if _rival:
+		_rival.queue_free()
 	_track = TrackScript.new()
 	add_child(_track)
 	_track.generate(_seed)
 	_car = CarScript.new()
 	add_child(_car)
+	_rival = CarScript.new()
+	add_child(_rival)
 	var pose: Array = _track.start_pose()
-	_car.setup(_track, int(pose[2]), pose[0], float(pose[1]))
+	var side: Vector3 = _track.sides[int(pose[2])]
+	_car.setup(_track, int(pose[2]), pose[0] + side * 2.2, float(pose[1]))
+	_rival.body_color = Color(0.85, 0.12, 0.10)
+	_rival.setup(_track, int(pose[2]), pose[0] - side * 2.2, float(pose[1]))
 	_car.connect("scraped", _on_scrape)
 	if not _hud:
 		_hud = HudScript.new()
 		add_child(_hud)
 		_hud.connect("start_pressed", _on_start)
 		_hud.connect("restart_pressed", _on_restart)
+	_hud.set_minimap_track(_track.points)
 	_build_smoke()
+	_build_rival_smoke()
+	_player_done = false
+	_rival_done = false
+	_end_t = 0.0
+	_rival_msg_t = -1.0
 	_look_s = _car.global_position
 	_cam.global_position = _car.global_position - _car.fwd() * 10.0 + Vector3(0, 4.0, 0)
 	_cam.look_at(_car.global_position + Vector3(0, 1.0, 0))
 	_hud.hide_results()
 	_hud.set_hud(0.0, 0.0, 0.0, 0.0)
+	_hud.set_battle(0.0, true)
 	_hud.set_center("")
 
 func _build_smoke() -> void:
@@ -104,6 +126,24 @@ func _build_smoke() -> void:
 	_smoke.position = Vector3(0, 0.35, 1.6)
 	_smoke.emitting = false
 	_car.add_child(_smoke)
+
+func _build_rival_smoke() -> void:
+	_rival_smoke = CPUParticles3D.new()
+	_rival_smoke.amount = 28
+	_rival_smoke.lifetime = 0.9
+	_rival_smoke.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	_rival_smoke.emission_sphere_radius = 0.7
+	_rival_smoke.direction = Vector3(0, 1, 0)
+	_rival_smoke.spread = 28.0
+	_rival_smoke.initial_velocity_min = 1.5
+	_rival_smoke.initial_velocity_max = 4.0
+	_rival_smoke.gravity = Vector3(0, 1.2, 0)
+	_rival_smoke.scale_amount_min = 0.5
+	_rival_smoke.scale_amount_max = 1.1
+	_rival_smoke.color = Color(0.55, 0.57, 0.62, 0.5)
+	_rival_smoke.position = Vector3(0, 0.35, 1.6)
+	_rival_smoke.emitting = false
+	_rival.add_child(_rival_smoke)
 
 func _on_start() -> void:
 	_hud.hide_title()
@@ -141,6 +181,7 @@ func _process(dt: float) -> void:
 					_state = State.RACING
 					_race_t = 0.0
 					_car.active = true
+					_rival.active = true
 					_go_t = 0.0
 			_follow_cam(dt)
 		State.RACING:
@@ -163,15 +204,43 @@ func _process(dt: float) -> void:
 			if Input.is_key_pressed(KEY_SPACE):
 				hb = true
 			_car.drive(dt, steer, gas, brake, hb)
+			var ai: Array = _ai_inputs()
+			_rival.drive(dt, float(ai[0]), float(ai[1]), float(ai[2]), false)
 			_follow_cam(dt)
 			var spd_ratio := clampf(_car.vel.length() / 56.0, 0.0, 1.0)
-			Sfx.set_engine(spd_ratio)
-			Sfx.set_drift(1.0 if _car.drifting else 0.0)
-			_smoke.emitting = _car.drifting
+			Sfx.set_engine(spd_ratio if not _player_done else 0.0)
+			Sfx.set_drift(1.0 if _car.drifting and not _player_done else 0.0)
+			_smoke.emitting = _car.drifting and not _player_done
+			_rival_smoke.emitting = _rival.drifting
 			_hud.set_hud(_race_t, _car.drift_score, _car.speed_kmh(),
 				_track.progress_of(_car._seg))
-			if _car._seg >= _track.finish_idx:
-				_finish()
+			var pgap := (_track.progress_of(_rival._seg) - _track.progress_of(_car._seg)) * 1520.0
+			_hud.set_battle(absf(pgap), pgap < 0.0)
+			_hud.update_minimap(_car.global_position, _rival.global_position)
+			# finishes
+			if not _player_done and _car._seg >= _track.finish_idx:
+				_player_done = true
+				_player_time = _race_t
+				_car.active = false
+			if not _rival_done and _rival._seg >= _track.finish_idx:
+				_rival_done = true
+				_rival_time = _race_t
+				_rival.active = false
+				if not _player_done:
+					_hud.set_center("RIVAL FINISHED!")
+					_rival_msg_t = 0.0
+			if _rival_msg_t >= 0.0:
+				_rival_msg_t += dt
+				if _rival_msg_t > 2.0:
+					_hud.set_center("")
+					_rival_msg_t = -1.0
+			if _player_done or _rival_done:
+				_end_t += dt
+			var race_over := (_player_done and _rival_done) \
+				or (_player_done and _end_t > 8.0) \
+				or (_rival_done and _end_t > 30.0)
+			if race_over:
+				_finish_battle()
 		State.FINISHED:
 			_follow_cam(dt)
 			_smoke.emitting = false
@@ -187,14 +256,58 @@ func _follow_cam(dt: float) -> void:
 	var spd_ratio := clampf(_car.vel.length() / 56.0, 0.0, 1.0)
 	_cam.fov = lerpf(_cam.fov, 68.0 + spd_ratio * 14.0, 1.0 - exp(-4.0 * dt))
 
-func _finish() -> void:
+func _ai_inputs() -> Array:
+	# pure-pursuit rival: chase a lookahead point, brake for curvature, rubber-band
+	var seg := _rival._seg
+	var pos := _rival.global_position
+	var speed := _rival.vel.length()
+	var last := _track.points.size() - 1
+	var look := clampi(8 + int(speed * 1.1), 8, 42)
+	var ti := mini(seg + look, _track.finish_idx + 4)
+	var target: Vector3 = _track.points[ti]
+	var to_t := target - pos
+	to_t.y = 0.0
+	var steer := 0.0
+	if to_t.length_squared() > 0.01:
+		var want_yaw := atan2(-to_t.x, -to_t.z)
+		var dyaw := wrapf(want_yaw - _rival.yaw, -PI, PI)
+		steer = clampf(dyaw * 2.2, -1.0, 1.0)
+	var curve := 0.0
+	var k := seg + 5
+	var kend := mini(seg + 34, last)
+	while k <= kend:
+		curve = maxf(curve, absf(wrapf(_track.yaws[k] - _track.yaws[seg], -PI, PI)))
+		k += 3
+	var corner_speed := lerpf(52.0, 21.0, clampf(curve / 0.85, 0.0, 1.0))
+	var gap := _track.progress_of(_rival._seg) - _track.progress_of(_car._seg)
+	var top := 49.0 + clampf(-gap * 300.0, -3.0, 4.0)
+	var target_speed := minf(corner_speed, top)
+	var gas := 1.0 if speed < target_speed else 0.0
+	var brake := 1.0 if speed > target_speed + 5.0 else 0.0
+	return [steer, gas, brake]
+
+func _finish_battle() -> void:
 	_state = State.FINISHED
 	_car.active = false
+	_rival.active = false
 	Sfx.engine_off()
 	Sfx.set_drift(0.0)
 	Sfx.finish_jingle()
+	var won := false
+	var gap_s := 0.0
+	if _player_done and _rival_done:
+		won = _player_time < _rival_time
+		gap_s = _player_time - _rival_time
+	elif _player_done:
+		won = true
+		var dist_gap := (_track.progress_of(_car._seg) - _track.progress_of(_rival._seg)) * 1520.0
+		gap_s = dist_gap / 45.0
+	else:
+		won = false
+		gap_s = _race_t - _rival_time
 	var new_best := false
-	if _best <= 0.0 or _race_t < _best:
-		_best = _race_t
+	if _player_done and (_best <= 0.0 or _player_time < _best):
+		_best = _player_time
 		new_best = true
-	_hud.show_results(_race_t, _car.drift_score, _best, new_best)
+	_hud.show_results(won, _player_time if _player_done else _race_t,
+		gap_s, _car.drift_score, _best, new_best)

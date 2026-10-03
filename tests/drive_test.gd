@@ -10,6 +10,8 @@ var _finished := false
 var _stall := 0
 var _prog_seg := 8
 var _prog_frame := 0
+var _rival_prog := 0.0
+var _rival_finished := false
 
 func _ready() -> void:
 	var ps: PackedScene = load("res://scenes/main.tscn")
@@ -18,6 +20,7 @@ func _ready() -> void:
 	_main._on_start()
 	_main._state = 2  # skip countdown
 	_main._car.active = true
+	_main._rival.active = true
 	_main._test_steer_on = true
 	print("TEST: race started, seg=", _main._car._seg)
 
@@ -68,18 +71,23 @@ func _process(_dt: float) -> void:
 	var prog: float = _main._track.progress_of(_main._car._seg)
 	_min_prog = maxf(_min_prog, prog)
 	_max_drift = maxf(_max_drift, _main._car.drift_score)
+	_rival_prog = maxf(_rival_prog, _main._track.progress_of(_main._rival._seg))
+	if _main._rival_done:
+		_rival_finished = true
 	if _main._state == 3:
 		_finished = true
 	if _frame == 600 or _frame == 1800 or _frame == 3590:
 		var p: Vector3 = _main._car.global_position
-		print("TEST f=%d prog=%.2f drift=%.0f seg=%d fspeed=%.1f pos=(%.1f,%.1f,%.1f) state=%d" % [
-			_frame, prog, _main._car.drift_score, _main._car._seg, _main._car.f_speed, p.x, p.y, p.z, _main._state])
+		var pr: Vector3 = _main._rival.global_position
+		print("TEST f=%d prog=%.2f rprog=%.2f drift=%.0f seg=%d rseg=%d fspeed=%.1f rfspeed=%.1f state=%d" % [
+			_frame, prog, _rival_prog, _main._car.drift_score, _main._car._seg, _main._rival._seg,
+			_main._car.f_speed, _main._rival.f_speed, _main._state])
 	if _frame == 3600 or _frame == 6000 or _frame == 9000 or _frame == 11990:
 		var p2: Vector3 = _main._car.global_position
 		var ok_pos := p2.x == p2.x and p2.y == p2.y and p2.z == p2.z  # no NaN
-		print("TEST RESULT ok_pos=%s prog=%.2f drift=%.0f finished=%s" % [
-			str(ok_pos), _min_prog, _max_drift, str(_finished)])
-		if ok_pos and _min_prog > 0.25 and _max_drift > 50.0:
+		print("TEST RESULT ok_pos=%s prog=%.2f rprog=%.2f drift=%.0f finished=%s rival_done=%s" % [
+			str(ok_pos), _min_prog, _rival_prog, _max_drift, str(_finished), str(_rival_finished)])
+		if ok_pos and _min_prog > 0.25 and _max_drift > 50.0 and _rival_prog > 0.20:
 			print("TEST PASS")
 		else:
 			print("TEST FAIL")

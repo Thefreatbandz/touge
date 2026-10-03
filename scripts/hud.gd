@@ -1,8 +1,10 @@
 extends CanvasLayer
-## Race HUD: touch pedals + steering, timer, drift score, countdown, results.
+## Race HUD: touch pedals + steering, timer, drift score, minimap, rival gap, results.
 
 signal start_pressed
 signal restart_pressed
+
+const MinimapScript := preload("res://scripts/minimap.gd")
 
 var t_steer_l := false
 var t_steer_r := false
@@ -13,6 +15,9 @@ var t_hb := false
 var _time_l: Label
 var _drift_l: Label
 var _speed_l: Label
+var _gap_l: Label
+var _pos_l: Label
+var _map: MinimapScript
 var _prog: ProgressBar
 var _center_l: Label
 var _title_panel: Control
@@ -89,6 +94,20 @@ func _build() -> void:
 	_prog.size = Vector2(520, 14)
 	_prog.show_percentage = false
 	add_child(_prog)
+	# rival gap (under progress bar)
+	_gap_l = _mk_label("", 26, Vector2(0, 86), HORIZONTAL_ALIGNMENT_CENTER)
+	_gap_l.custom_minimum_size = Vector2(1280, 34)
+	add_child(_gap_l)
+	# position badge (top-right, under speed)
+	_pos_l = _mk_label("", 44, Vector2(1280 - 260, 92), HORIZONTAL_ALIGNMENT_RIGHT)
+	_pos_l.custom_minimum_size = Vector2(160, 56)
+	add_child(_pos_l)
+	# minimap (top-right)
+	_map = MinimapScript.new()
+	_map.position = Vector2(1280 - 216, 156)
+	_map.custom_minimum_size = Vector2(196, 150)
+	_map.size = Vector2(196, 150)
+	add_child(_map)
 	# steering (bottom-left)
 	var bl := _mk_button("<", Vector2(36, 720 - 190), Vector2(150, 150), 72)
 	var br := _mk_button(">", Vector2(200, 720 - 190), Vector2(150, 150), 72)
@@ -122,12 +141,12 @@ func _build() -> void:
 	tt.custom_minimum_size = Vector2(1280, 150)
 	tt.add_theme_color_override("font_color", Color(1.0, 0.35, 0.25))
 	_title_panel.add_child(tt)
-	var ts := _mk_label("night pass time attack · own the drift", 30, Vector2(0, 300), HORIZONTAL_ALIGNMENT_CENTER)
+	var ts := _mk_label("head-to-head touge · beat the redline rival", 30, Vector2(0, 300), HORIZONTAL_ALIGNMENT_CENTER)
 	ts.custom_minimum_size = Vector2(1280, 50)
 	ts.modulate = Color(1, 1, 1, 0.75)
 	_title_panel.add_child(ts)
 	var go_b := Button.new()
-	go_b.text = "TAP TO RACE"
+	go_b.text = "TAP TO BATTLE"
 	go_b.focus_mode = Control.FOCUS_NONE
 	go_b.position = Vector2(1280 / 2 - 170, 430)
 	go_b.custom_minimum_size = Vector2(340, 100)
@@ -180,10 +199,30 @@ func set_hud(time_s: float, drift: float, kmh: float, prog: float) -> void:
 	_speed_l.text = "%d" % int(kmh)
 	_prog.value = prog * 1000.0
 
-func show_results(time_s: float, drift: float, best: float, new_best: bool) -> void:
+func set_battle(gap_m: float, player_ahead: bool) -> void:
+	if player_ahead:
+		_gap_l.text = "GAP +%.0f m" % gap_m
+		_gap_l.add_theme_color_override("font_color", Color(0.35, 1.0, 0.55))
+		_pos_l.text = "1ST"
+		_pos_l.add_theme_color_override("font_color", Color(1.0, 0.85, 0.30))
+	else:
+		_gap_l.text = "GAP -%.0f m" % gap_m
+		_gap_l.add_theme_color_override("font_color", Color(1.0, 0.35, 0.30))
+		_pos_l.text = "2ND"
+		_pos_l.add_theme_color_override("font_color", Color(0.75, 0.80, 0.90))
+
+func set_minimap_track(pts: PackedVector3Array) -> void:
+	_map.set_track(pts)
+
+func update_minimap(p1: Vector3, p2: Vector3) -> void:
+	_map.set_cars(p1, p2, true)
+
+func show_results(won: bool, time_s: float, gap_s: float, drift: float, best: float, new_best: bool) -> void:
+	var head := "YOU WIN!" if won else "RIVAL WINS"
 	var nb := "\nNEW BEST!" if new_best else ""
-	_result_l.text = "FINISH!\nTime  %s\nDrift  %d pts\nBest  %s%s" % [
-		_fmt_time(time_s), int(drift), _fmt_time(best), nb]
+	_result_l.text = "%s\nTime  %s   Gap  %s%.1fs\nDrift  %d pts\nBest  %s%s" % [
+		head, _fmt_time(time_s), "+" if won else "-", absf(gap_s),
+		int(drift), _fmt_time(best), nb]
 	_result_panel.visible = true
 
 func hide_results() -> void:

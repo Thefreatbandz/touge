@@ -3,6 +3,7 @@ extends CanvasLayer
 
 signal start_pressed
 signal restart_pressed
+signal photo_pressed
 
 const MinimapScript := preload("res://scripts/minimap.gd")
 
@@ -11,6 +12,11 @@ var t_steer_r := false
 var t_gas := false
 var t_brake := false
 var t_hb := false
+var t_nitro := false
+
+func set_nitro(v: float) -> void:
+	if _nitro_bar:
+		_nitro_bar.value = v * 100.0
 
 var _time_l: Label
 var _drift_l: Label
@@ -24,6 +30,18 @@ var _title_panel: Control
 var _result_panel: Control
 var _result_l: Label
 var _hint_l: Label
+var _speed_lines: Array = []
+var _nitro_btn: Button
+var _nitro_bar: ProgressBar
+var _photo_btn: Button
+var _rain_btn: Button
+var rain_on := false
+signal rain_toggled(on: bool)
+
+func _on_rain_toggle() -> void:
+	rain_on = not rain_on
+	_rain_btn.text = "RAIN: ON" if rain_on else "RAIN: OFF"
+	emit_signal("rain_toggled", rain_on)
 
 func _ready() -> void:
 	layer = 10
@@ -37,10 +55,15 @@ func touch_steer() -> float:
 		s -= 1.0
 	return s
 
+const FONT_DISPLAY := preload("res://assets/fonts/Orbitron.ttf")      # titles, countdown
+const FONT_HUD := preload("res://assets/fonts/Rajdhani.ttf")          # HUD labels
+const FONT_MONO := preload("res://assets/fonts/ShareTechMono.ttf")    # timers
+
 func _mk_label(text: String, size: int, pos: Vector2, align := HORIZONTAL_ALIGNMENT_LEFT) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_font_override("font", FONT_HUD)
 	l.add_theme_color_override("font_color", Color(0.95, 0.97, 1.0))
 	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
 	l.add_theme_constant_override("shadow_offset_x", 2)
@@ -73,6 +96,22 @@ func _mk_button(text: String, pos: Vector2, size: Vector2, font := 40) -> Button
 	return b
 
 func _build() -> void:
+	# speed lines (screen-edge streaks, alpha driven by speed; drawn first = behind UI)
+	_speed_lines.clear()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1234
+	for i in range(12):
+		var line := ColorRect.new()
+		var left_side := i % 2 == 0
+		var lx := rng.randf_range(8.0, 90.0) if left_side else rng.randf_range(1190.0, 1272.0)
+		var ly := rng.randf_range(120.0, 640.0)
+		var lh := rng.randf_range(60.0, 180.0)
+		line.position = Vector2(lx, ly)
+		line.size = Vector2(3, lh)
+		line.color = Color(1, 1, 1, 0.0)
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(line)
+		_speed_lines.append(line)
 	# top HUD backdrop strip (readability against bright sunset sky)
 	var strip := ColorRect.new()
 	strip.color = Color(0.05, 0.03, 0.04, 0.45)
@@ -81,6 +120,7 @@ func _build() -> void:
 	add_child(strip)
 	# top bar
 	_time_l = _mk_label("0:00.0", 34, Vector2(24, 14))
+	_time_l.add_theme_font_override("font", FONT_MONO)
 	add_child(_time_l)
 	_drift_l = _mk_label("DRIFT 0", 34, Vector2(1280 / 2 - 160, 14), HORIZONTAL_ALIGNMENT_CENTER)
 	_drift_l.custom_minimum_size = Vector2(320, 44)
@@ -88,6 +128,7 @@ func _build() -> void:
 	add_child(_drift_l)
 	_speed_l = _mk_label("0", 72, Vector2(1280 - 260, 4), HORIZONTAL_ALIGNMENT_RIGHT)
 	_speed_l.custom_minimum_size = Vector2(160, 88)
+	_speed_l.add_theme_font_override("font", FONT_MONO)
 	_speed_l.add_theme_color_override("font_color", Color(1.0, 0.82, 0.45))
 	add_child(_speed_l)
 	var unit := _mk_label("km/h", 22, Vector2(1280 - 96, 52))
@@ -105,6 +146,7 @@ func _build() -> void:
 	# rival gap (under progress bar)
 	_gap_l = _mk_label("", 26, Vector2(0, 86), HORIZONTAL_ALIGNMENT_CENTER)
 	_gap_l.custom_minimum_size = Vector2(1280, 34)
+	_gap_l.add_theme_font_override("font", FONT_MONO)
 	add_child(_gap_l)
 	# position badge (top-right, under speed)
 	_pos_l = _mk_label("", 44, Vector2(1280 - 260, 92), HORIZONTAL_ALIGNMENT_RIGHT)
@@ -133,9 +175,27 @@ func _build() -> void:
 	brake.button_up.connect(func(): t_brake = false)
 	hb.button_down.connect(func(): t_hb = true)
 	hb.button_up.connect(func(): t_hb = false)
+	# nitro (above handbrake)
+	_nitro_btn = _mk_button("N2O", Vector2(1280 - 350, 720 - 480), Vector2(150, 120), 40)
+	_nitro_btn.button_down.connect(func(): t_nitro = true)
+	_nitro_btn.button_up.connect(func(): t_nitro = false)
+	# nitro meter (bottom-left, above steering)
+	_nitro_bar = ProgressBar.new()
+	_nitro_bar.min_value = 0
+	_nitro_bar.max_value = 100
+	_nitro_bar.position = Vector2(36, 720 - 210)
+	_nitro_bar.custom_minimum_size = Vector2(314, 14)
+	_nitro_bar.size = Vector2(314, 14)
+	_nitro_bar.show_percentage = false
+	add_child(_nitro_bar)
+	# photo mode button (top-left, under timer)
+	_photo_btn = _mk_button("PHOTO", Vector2(24, 58), Vector2(120, 44), 22)
+	_photo_btn.pressed.connect(func(): emit_signal("photo_pressed"))
+
 	# center label (countdown / messages)
 	_center_l = _mk_label("", 150, Vector2(0, 200), HORIZONTAL_ALIGNMENT_CENTER)
 	_center_l.custom_minimum_size = Vector2(1280, 220)
+	_center_l.add_theme_font_override("font", FONT_DISPLAY)
 	_center_l.add_theme_color_override("font_color", Color(1.0, 0.72, 0.25))
 	_center_l.visible = false
 	add_child(_center_l)
@@ -148,10 +208,12 @@ func _build() -> void:
 	_title_panel = _mk_dim(0.45)
 	var tt := _mk_label("TOUGE", 130, Vector2(0, 130), HORIZONTAL_ALIGNMENT_CENTER)
 	tt.custom_minimum_size = Vector2(1280, 170)
+	tt.add_theme_font_override("font", FONT_DISPLAY)
 	tt.add_theme_color_override("font_color", Color(1.0, 0.45, 0.15))
 	_title_panel.add_child(tt)
 	var tt2 := _mk_label("SUNSET PASS", 44, Vector2(0, 295), HORIZONTAL_ALIGNMENT_CENTER)
 	tt2.custom_minimum_size = Vector2(1280, 60)
+	tt2.add_theme_font_override("font", FONT_DISPLAY)
 	tt2.add_theme_color_override("font_color", Color(1.0, 0.80, 0.45))
 	_title_panel.add_child(tt2)
 	var ts := _mk_label("head-to-head battle · beat the redline rival", 30, Vector2(0, 360), HORIZONTAL_ALIGNMENT_CENTER)
@@ -165,8 +227,20 @@ func _build() -> void:
 	go_b.custom_minimum_size = Vector2(340, 100)
 	go_b.size = Vector2(340, 100)
 	go_b.add_theme_font_size_override("font_size", 44)
+	go_b.add_theme_font_override("font", FONT_DISPLAY)
 	go_b.pressed.connect(func(): emit_signal("start_pressed"))
 	_title_panel.add_child(go_b)
+	# rain toggle on the title (per-run weather)
+	_rain_btn = Button.new()
+	_rain_btn.text = "RAIN: OFF"
+	_rain_btn.focus_mode = Control.FOCUS_NONE
+	_rain_btn.position = Vector2(1280 / 2 - 110, 545)
+	_rain_btn.custom_minimum_size = Vector2(220, 56)
+	_rain_btn.size = Vector2(220, 56)
+	_rain_btn.add_theme_font_size_override("font_size", 26)
+	_rain_btn.add_theme_font_override("font", FONT_HUD)
+	_rain_btn.pressed.connect(_on_rain_toggle)
+	_title_panel.add_child(_rain_btn)
 	add_child(_title_panel)
 	# results panel (hidden)
 	_result_panel = _mk_dim()
@@ -211,6 +285,12 @@ func set_hud(time_s: float, drift: float, kmh: float, prog: float) -> void:
 	_drift_l.text = "DRIFT %d" % int(drift)
 	_speed_l.text = "%d" % int(kmh)
 	_prog.value = prog * 1000.0
+	# speed lines fade in past ~60% speed
+	var sa := clampf((kmh / 200.0 - 0.55) * 1.6, 0.0, 0.55)
+	for line in _speed_lines:
+		var c: Color = line.color
+		c.a = sa
+		line.color = c
 
 func set_battle(gap_m: float, player_ahead: bool) -> void:
 	if gap_m < 0.5:
@@ -248,3 +328,12 @@ func _fmt_time(s: float) -> String:
 	var m := int(s) / 60
 	var sec := s - m * 60
 	return "%d:%04.1f" % [m, sec]
+
+
+func set_photo_ui(on: bool) -> void:
+	# hide driving UI for clean screenshots; button becomes EXIT
+	for c in get_children():
+		if c == _photo_btn:
+			continue
+		(c as CanvasItem).visible = not on
+	_photo_btn.text = "EXIT" if on else "PHOTO"

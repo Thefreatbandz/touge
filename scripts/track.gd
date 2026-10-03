@@ -13,6 +13,7 @@ var sides: PackedVector3Array      # right vector at each point
 var yaws: PackedFloat32Array       # heading yaw matching car.gd convention
 var start_idx := 8
 var finish_idx := COUNT - 12
+var wet := false  # rain mode: puddles on the asphalt
 
 var _mat_flat: StandardMaterial3D
 var _mat_emit: StandardMaterial3D
@@ -20,7 +21,8 @@ var _mat_gray: StandardMaterial3D
 var _blimp: Node3D
 var _blimp_angle := 0.0
 
-func generate(seed: int) -> void:
+func generate(seed: int, rain := false) -> void:
+	wet = rain
 	_mat_flat = StandardMaterial3D.new()
 	_mat_flat.vertex_color_use_as_albedo = true
 	_mat_flat.roughness = 1.0
@@ -43,6 +45,158 @@ func generate(seed: int) -> void:
 	_build_road(rng)
 	_build_scenery(rng)
 	_build_gates()
+	_build_tunnels(rng)
+	_build_crowd(rng)
+	if wet:
+		_build_puddles(rng)
+
+func _build_crowd(rng: RandomNumberGenerator) -> void:
+	# billboarded spectators lining the start and finish (shared materials)
+	var shirts := [Color(0.95, 0.30, 0.25), Color(0.25, 0.55, 0.95),
+		Color(0.95, 0.80, 0.30), Color(0.35, 0.90, 0.45), Color(0.90, 0.45, 0.85),
+		Color(0.85, 0.85, 0.90)]
+	var mats: Array = []
+	for sc in shirts:
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		m.albedo_color = sc
+		mats.append(m)
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.55, 1.75)
+	for gate_i in [start_idx - 14, finish_idx]:
+		var p: Vector3 = points[gate_i]
+		var s: Vector3 = sides[gate_i]
+		var t: Vector3 = tangents[gate_i]
+		for row in range(3):
+			for k in range(10):
+				var sgn := -1.0 if k % 2 == 0 else 1.0
+				var along := (float(k) / 10.0 - 0.5) * 36.0
+				var base := p + t * along + s * (sgn * (8.5 + float(row) * 1.6))
+				base.y = 0.0
+				var person := MeshInstance3D.new()
+				person.mesh = quad
+				person.material_override = mats[rng.randi_range(0, mats.size() - 1)]
+				person.position = base + Vector3(0, 0.88, 0)
+				person.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				add_child(person)
+
+func _build_tunnels(rng: RandomNumberGenerator) -> void:
+	# 2 tunnel sections on straight runs: walls + ceiling + light strips
+	var runs: Array = []
+	var i := 20
+	var last_end := 0
+	while i < COUNT - 40 and runs.size() < 2:
+		if i < last_end + 30:
+			i += 1
+			continue
+		# check 16-point straightness
+		var ok := true
+		var y0: float = yaws[i]
+		for j in range(i + 1, i + 16):
+			if absf(wrapf(yaws[j] - y0, -PI, PI)) > 0.12:
+				ok = false
+				break
+		if ok:
+			runs.append([i, i + 15])
+			last_end = i + 15
+			i += 30
+		else:
+			i += 3
+	for run in runs:
+		_build_one_tunnel(int(run[0]), int(run[1]))
+
+func _build_one_tunnel(a: int, b: int) -> void:
+	var tun := Node3D.new()
+	add_child(tun)
+	# walls: quads along both sides, 6m tall
+	_begin()
+	var wall_c := Color(0.14, 0.13, 0.16)
+	for sgn: float in [-1.0, 1.0]:
+		for k in range(a, b):
+			var p0: Vector3 = points[k] + sides[k] * (sgn * 7.2)
+			var p1: Vector3 = points[k + 1] + sides[k + 1] * (sgn * 7.2)
+			var n: Vector3 = sides[k] * -sgn  # face inward
+			_quad(p0, p1, p0 + Vector3(0, 6, 0), p1 + Vector3(0, 6, 0), wall_c, n)
+	_finish(tun, _mat_flat)
+	# ceiling: quads across the top at y=6
+	_begin()
+	var ceil_c := Color(0.10, 0.10, 0.13)
+	for k in range(a, b):
+		var c0 := (points[k] + points[k + 1]) * 0.5
+		var s0 := (sides[k] + sides[k + 1]) * 0.5
+		var l0 := c0 - s0 * 7.4 + Vector3(0, 6, 0)
+		var r0 := c0 + s0 * 7.4 + Vector3(0, 6, 0)
+		var l1 := points[k + 1] - sides[k + 1] * 7.4 + Vector3(0, 6, 0)
+		var r1 := points[k + 1] + sides[k + 1] * 7.4 + Vector3(0, 6, 0)
+		_quad(l0, r0, l1, r1, ceil_c, Vector3(0, -1, 0))
+	_finish(tun, _mat_flat)
+	# ceiling light strips (emissive, every 3rd point)
+	_begin()
+	var light_c := Color(1.0, 0.75, 0.35)
+	for k in range(a, b, 3):
+		var c: Vector3 = points[k] + Vector3(0, 5.85, 0)
+		var s: Vector3 = sides[k]
+		var t: Vector3 = tangents[k]
+		_quad(c - s * 5.0 - t * 0.4, c + s * 5.0 - t * 0.4,
+			c - s * 5.0 + t * 0.4, c + s * 5.0 + t * 0.4, light_c, Vector3(0, -1, 0))
+	_finish(tun, _mat_emit)
+	# tunnel entry portals (dark frames)
+	_begin()
+	var port_c := Color(0.08, 0.08, 0.10)
+	for pi in [a, b]:
+		var p: Vector3 = points[pi]
+		var s: Vector3 = sides[pi]
+		var t: Vector3 = tangents[pi]
+		# top beam
+		var b0 := p - s * 7.6 + Vector3(0, 6.0, 0)
+		var b1 := p + s * 7.6 + Vector3(0, 6.0, 0)
+		_quad(b0 - t * 0.6, b1 - t * 0.6, b0 + t * 0.6, b1 + t * 0.6, port_c, t)
+		# side posts
+		for sgn: float in [-1.0, 1.0]:
+			var bp: Vector3 = p + s * (sgn * 7.4)
+			_quad(bp - t * 0.6, bp + t * 0.6,
+				bp - t * 0.6 + Vector3(0, 6.4, 0), bp + t * 0.6 + Vector3(0, 6.4, 0),
+				port_c, s * -sgn)
+	_finish(tun, _mat_flat)
+
+func _build_puddles(rng: RandomNumberGenerator) -> void:
+	# rain mode: dark glossy quads scattered on the asphalt (fake reflections)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(0.10, 0.13, 0.22, 0.55)
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var verts := PackedVector3Array()
+	var idx := PackedInt32Array()
+	var n := 0
+	for i in range(48):
+		var pi := rng.randi_range(4, points.size() - 5)
+		var c: Vector3 = points[pi]
+		var lat := rng.randf_range(-2.8, 2.8)
+		var p := c + sides[pi] * lat + Vector3(0, 0.025, 0)
+		var w := rng.randf_range(1.2, 2.8)
+		var l := rng.randf_range(2.0, 5.5)
+		var f := Vector3(0, 0, -1).rotated(Vector3.UP, yaws[pi])
+		var s := Vector3(-f.z, 0.0, f.x)
+		var b := n * 4
+		verts.append(p - s * w * 0.5 - f * l * 0.5)
+		verts.append(p + s * w * 0.5 - f * l * 0.5)
+		verts.append(p + s * w * 0.5 + f * l * 0.5)
+		verts.append(p - s * w * 0.5 + f * l * 0.5)
+		idx.append_array([b, b + 1, b + 2, b, b + 2, b + 3])
+		n += 1
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
 
 func _layout(rng: RandomNumberGenerator) -> void:
 	points = PackedVector3Array()
@@ -582,6 +736,11 @@ func _build_billboards(rng: RandomNumberGenerator) -> void:
 		lab.shaded = false
 		lab.position = pc + to_road * 0.4
 		add_child(lab)
+		_anim_labels.append(lab)
+
+var _anim_labels: Array = []
+var _anim_t := 0.0
+var _anim_texts := ["TOUGE", "DRIFT", "APEX", "REDLINE", "MIDNIGHT", "NITRO", "TURBO", "GP 90"]
 
 func _build_poles_wires(rng: RandomNumberGenerator) -> void:
 	# utility poles only — the spanning wires cut across the camera on curves,
@@ -959,6 +1118,12 @@ func _process(dt: float) -> void:
 		var c := (points[0] + points[COUNT / 2]) * 0.5
 		_blimp.position = c + Vector3(cos(_blimp_angle) * 150.0, 120.0, sin(_blimp_angle) * 150.0)
 		_blimp.rotation.y = -_blimp_angle
+	# cycle billboard texts so the city feels alive
+	_anim_t += dt
+	if _anim_t >= 4.0 and not _anim_labels.is_empty():
+		_anim_t = 0.0
+		for lab in _anim_labels:
+			(lab as Label3D).text = _anim_texts[randi() % _anim_texts.size()]
 
 func _build_clouds(rng: RandomNumberGenerator) -> void:
 	# chunky PS1 clouds, warm-lit

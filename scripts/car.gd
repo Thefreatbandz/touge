@@ -9,7 +9,7 @@ const MAX_SPEED := 56.0       # ~200 km/h
 const MAX_REVERSE := 9.0
 const DRAG := 0.28
 const ROLLING := 1.6
-const GRIP := 7.5
+var grip_base := 7.5  # lowered in rain for spicier drifts
 const DRIFT_GRIP := 1.1
 
 var yaw := 0.0
@@ -28,6 +28,10 @@ var _trail_pts: Array = []  # [Vector3 left, Vector3 right]
 var _trail_mi: MeshInstance3D
 var _trail_mat: StandardMaterial3D
 var _trail_fade := 0.0
+var _ltrail_pts: Array = []  # light trails: [Vector3 left_tail, Vector3 right_tail]
+var _ltrail_mi: MeshInstance3D
+var _ltrail_mat: StandardMaterial3D
+const LTRAIL_MAX := 36
 
 var _body: Node3D
 var _wheels: Array[Node3D] = []
@@ -52,9 +56,10 @@ func setup(track: Node, seg: int, pos: Vector3, start_yaw: float) -> void:
 	rotation.y = yaw
 	_build_mesh()
 	_build_trail()
+	_build_ltrail()
 	_build_underglow()
 
-func drive(dt: float, steer: float, throttle: float, brake: float, handbrake: bool) -> void:
+func drive(dt: float, steer: float, throttle: float, brake: float, handbrake: bool, boost := false) -> void:
 	if not active:
 		return
 	_scrape_cd = maxf(0.0, _scrape_cd - dt)
@@ -74,14 +79,16 @@ func drive(dt: float, steer: float, throttle: float, brake: float, handbrake: bo
 
 	# --- longitudinal ---
 	f_speed = vel.dot(f)
+	var top := MAX_SPEED * (1.35 if boost else 1.0)
 	if throttle > 0.0:
-		f_speed += ENGINE_ACCEL * throttle * maxf(0.0, 1.0 - f_speed / MAX_SPEED) * dt
+		var accel := ENGINE_ACCEL * (1.9 if boost else 1.0)
+		f_speed += accel * throttle * maxf(0.0, 1.0 - f_speed / top) * dt
 	if brake > 0.0:
 		if f_speed > 1.0:
 			f_speed -= BRAKE_FORCE * brake * dt
 		else:
 			f_speed -= ENGINE_ACCEL * 0.5 * brake * dt  # reverse
-	f_speed = clampf(f_speed, -MAX_REVERSE, MAX_SPEED * 1.05)
+	f_speed = clampf(f_speed, -MAX_REVERSE, top * 1.05)
 	f_speed -= f_speed * DRAG * dt
 	if absf(f_speed) < ROLLING * dt * 4.0 and throttle <= 0.0:
 		f_speed = 0.0
@@ -90,7 +97,7 @@ func drive(dt: float, steer: float, throttle: float, brake: float, handbrake: bo
 
 	# --- lateral grip: low grip + steering = drift ---
 	var lat := vel - f * vel.dot(f)
-	var grip := DRIFT_GRIP if handbrake else GRIP
+	var grip := DRIFT_GRIP if handbrake else grip_base
 	if absf(steer_s) > 0.75 and spd > 26.0:
 		grip *= 0.55  # power slide at full lock + speed
 	lat *= exp(-grip * dt)
@@ -129,6 +136,7 @@ func drive(dt: float, steer: float, throttle: float, brake: float, handbrake: bo
 	if drifting:
 		drift_score += spd * slip_deg * dt * 0.9
 	_update_trail(dt)
+	_update_ltrail(dt)
 
 	# --- visuals ---
 	rotation.y = yaw
@@ -231,6 +239,26 @@ func _build_mesh() -> void:
 	beam.spot_angle = 32.0
 	beam.shadow_enabled = false
 	_body.add_child(beam)
+	# visible headlight cones (additive "volume" at dusk)
+	var cone_mat := StandardMaterial3D.new()
+	cone_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	cone_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	cone_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	cone_mat.albedo_color = Color(1.0, 0.92, 0.72, 0.10)
+	cone_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	for hx in [-0.58, 0.58]:
+		var cone := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.18
+		cm.bottom_radius = 1.35
+		cm.height = 7.0
+		cm.radial_segments = 10
+		cone.mesh = cm
+		cone.material_override = cone_mat
+		cone.position = Vector3(hx, 0.92, -5.6)
+		cone.rotation.x = PI / 2.0
+		cone.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_body.add_child(cone)
 	# --- detail pass: rims, mirrors, skirts, lip, exhaust ---
 	var rim_c := Color(0.75, 0.77, 0.80)
 	for pivot in _wheels:
@@ -332,6 +360,73 @@ func _rebuild_trail() -> void:
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	_trail_mi.mesh = mesh
 	_trail_mi.transparency = 0.0
+
+func _build_ltrail() -> void:
+	# Tron-style vertical light ribbons at the taillights while drifting
+	if _ltrail_mi:
+		_ltrail_mi.queue_free()
+	_ltrail_pts.clear()
+	_ltrail_mat = StandardMaterial3D.new()
+	_ltrail_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_ltrail_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_ltrail_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	_ltrail_mat.vertex_color_use_as_albedo = true
+	_ltrail_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_ltrail_mi = MeshInstance3D.new()
+	_ltrail_mi.material_override = _ltrail_mat
+	_ltrail_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	get_parent().add_child(_ltrail_mi)
+
+func _update_ltrail(dt: float) -> void:
+	if not _ltrail_mi:
+		return
+	if drifting and f_speed > 10.0:
+		var f := fwd()
+		var side := Vector3(-f.z, 0.0, f.x)
+		var rear := global_position - f * 1.55 + Vector3(0, 0.72, 0)
+		_ltrail_pts.append([rear - side * 0.55, rear + side * 0.55])
+		if _ltrail_pts.size() > LTRAIL_MAX:
+			_ltrail_pts.pop_front()
+		_rebuild_ltrail()
+	elif _ltrail_pts.size() > 0:
+		_ltrail_pts.pop_front()
+		_rebuild_ltrail()
+
+func _rebuild_ltrail() -> void:
+	var n := _ltrail_pts.size()
+	if n < 2:
+		_ltrail_mi.mesh = null
+		return
+	var verts := PackedVector3Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	var up := Vector3(0, 0.55, 0)
+	for i in range(n):
+		var pair: Array = _ltrail_pts[i]
+		var l: Vector3 = pair[0]
+		var r: Vector3 = pair[1]
+		verts.append(l)
+		verts.append(l + up)
+		verts.append(r)
+		verts.append(r + up)
+		var a := 0.9 * float(i) / float(n)
+		var c := Color(glow_color.r, glow_color.g, glow_color.b, a)
+		cols.append(c)
+		cols.append(c)
+		cols.append(c)
+		cols.append(c)
+		if i > 0:
+			var b := (i - 1) * 4
+			idx.append_array([b, b + 1, b + 4, b + 1, b + 5, b + 4])
+			idx.append_array([b + 2, b + 3, b + 6, b + 3, b + 7, b + 6])
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_COLOR] = cols
+	arr[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	_ltrail_mi.mesh = mesh
 
 func _build_underglow() -> void:
 	var grad := Gradient.new()

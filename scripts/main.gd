@@ -42,29 +42,29 @@ func _build_world_fx() -> void:
 	env.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
 	var sm := ProceduralSkyMaterial.new()
-	sm.sky_top_color = Color(0.006, 0.010, 0.028)
-	sm.sky_horizon_color = Color(0.030, 0.052, 0.105)
-	sm.ground_bottom_color = Color(0.004, 0.006, 0.012)
-	sm.ground_horizon_color = Color(0.018, 0.030, 0.058)
+	sm.sky_top_color = Color(0.13, 0.14, 0.34)
+	sm.sky_horizon_color = Color(0.98, 0.48, 0.20)
+	sm.ground_bottom_color = Color(0.05, 0.035, 0.045)
+	sm.ground_horizon_color = Color(0.35, 0.16, 0.10)
 	sky.sky_material = sm
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.6
+	env.ambient_light_energy = 0.75
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
-	env.fog_light_color = Color(0.020, 0.036, 0.072)
-	env.fog_density = 0.0052
+	env.fog_light_color = Color(0.55, 0.26, 0.13)
+	env.fog_density = 0.0042
 	env.glow_enabled = true
 	env.glow_intensity = 0.85
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
-	var moon := DirectionalLight3D.new()
-	moon.light_color = Color(0.60, 0.72, 0.98)
-	moon.light_energy = 0.65
-	moon.rotation = Vector3(-0.9, 0.6, 0.0)
-	moon.shadow_enabled = false
-	add_child(moon)
+	var sun := DirectionalLight3D.new()
+	sun.light_color = Color(1.0, 0.55, 0.28)
+	sun.light_energy = 1.25
+	sun.rotation = Vector3(-0.38, 0.85, 0.0)
+	sun.shadow_enabled = false
+	add_child(sun)
 	_cam = Camera3D.new()
 	_cam.far = 900.0
 	add_child(_cam)

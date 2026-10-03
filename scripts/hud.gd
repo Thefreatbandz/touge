@@ -59,13 +59,13 @@ func _mk_button(text: String, pos: Vector2, size: Vector2, font := 40) -> Button
 	b.add_theme_font_size_override("font_size", font)
 	b.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.10, 0.14, 0.22, 0.55)
-	sb.border_color = Color(0.5, 0.7, 1.0, 0.7)
+	sb.bg_color = Color(0.16, 0.10, 0.08, 0.55)
+	sb.border_color = Color(1.0, 0.62, 0.25, 0.8)
 	sb.set_border_width_all(3)
 	sb.set_corner_radius_all(18)
 	b.add_theme_stylebox_override("normal", sb)
 	var sbp := sb.duplicate() as StyleBoxFlat
-	sbp.bg_color = Color(0.25, 0.45, 0.80, 0.75)
+	sbp.bg_color = Color(0.80, 0.42, 0.15, 0.75)
 	b.add_theme_stylebox_override("pressed", sbp)
 	b.add_theme_stylebox_override("hover", sb)
 	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
@@ -73,14 +73,22 @@ func _mk_button(text: String, pos: Vector2, size: Vector2, font := 40) -> Button
 	return b
 
 func _build() -> void:
+	# top HUD backdrop strip (readability against bright sunset sky)
+	var strip := ColorRect.new()
+	strip.color = Color(0.05, 0.03, 0.04, 0.45)
+	strip.position = Vector2(0, 0)
+	strip.size = Vector2(1280, 128)
+	add_child(strip)
 	# top bar
 	_time_l = _mk_label("0:00.0", 34, Vector2(24, 14))
 	add_child(_time_l)
 	_drift_l = _mk_label("DRIFT 0", 34, Vector2(1280 / 2 - 160, 14), HORIZONTAL_ALIGNMENT_CENTER)
 	_drift_l.custom_minimum_size = Vector2(320, 44)
+	_drift_l.add_theme_color_override("font_color", Color(1.0, 0.75, 0.35))
 	add_child(_drift_l)
-	_speed_l = _mk_label("0", 64, Vector2(1280 - 260, 8), HORIZONTAL_ALIGNMENT_RIGHT)
-	_speed_l.custom_minimum_size = Vector2(160, 80)
+	_speed_l = _mk_label("0", 72, Vector2(1280 - 260, 4), HORIZONTAL_ALIGNMENT_RIGHT)
+	_speed_l.custom_minimum_size = Vector2(160, 88)
+	_speed_l.add_theme_color_override("font_color", Color(1.0, 0.82, 0.45))
 	add_child(_speed_l)
 	var unit := _mk_label("km/h", 22, Vector2(1280 - 96, 52))
 	unit.modulate = Color(1, 1, 1, 0.6)
@@ -126,8 +134,9 @@ func _build() -> void:
 	hb.button_down.connect(func(): t_hb = true)
 	hb.button_up.connect(func(): t_hb = false)
 	# center label (countdown / messages)
-	_center_l = _mk_label("", 120, Vector2(0, 220), HORIZONTAL_ALIGNMENT_CENTER)
-	_center_l.custom_minimum_size = Vector2(1280, 200)
+	_center_l = _mk_label("", 150, Vector2(0, 200), HORIZONTAL_ALIGNMENT_CENTER)
+	_center_l.custom_minimum_size = Vector2(1280, 220)
+	_center_l.add_theme_color_override("font_color", Color(1.0, 0.72, 0.25))
 	_center_l.visible = false
 	add_child(_center_l)
 	# desktop hint
@@ -136,14 +145,18 @@ func _build() -> void:
 	_hint_l.modulate = Color(1, 1, 1, 0.45)
 	add_child(_hint_l)
 	# title overlay
-	_title_panel = _mk_dim()
-	var tt := _mk_label("TOUGE", 110, Vector2(0, 150), HORIZONTAL_ALIGNMENT_CENTER)
-	tt.custom_minimum_size = Vector2(1280, 150)
-	tt.add_theme_color_override("font_color", Color(1.0, 0.35, 0.25))
+	_title_panel = _mk_dim(0.45)
+	var tt := _mk_label("TOUGE", 130, Vector2(0, 130), HORIZONTAL_ALIGNMENT_CENTER)
+	tt.custom_minimum_size = Vector2(1280, 170)
+	tt.add_theme_color_override("font_color", Color(1.0, 0.45, 0.15))
 	_title_panel.add_child(tt)
-	var ts := _mk_label("head-to-head touge · beat the redline rival", 30, Vector2(0, 300), HORIZONTAL_ALIGNMENT_CENTER)
+	var tt2 := _mk_label("SUNSET PASS", 44, Vector2(0, 295), HORIZONTAL_ALIGNMENT_CENTER)
+	tt2.custom_minimum_size = Vector2(1280, 60)
+	tt2.add_theme_color_override("font_color", Color(1.0, 0.80, 0.45))
+	_title_panel.add_child(tt2)
+	var ts := _mk_label("head-to-head battle · beat the redline rival", 30, Vector2(0, 360), HORIZONTAL_ALIGNMENT_CENTER)
 	ts.custom_minimum_size = Vector2(1280, 50)
-	ts.modulate = Color(1, 1, 1, 0.75)
+	ts.modulate = Color(1, 1, 1, 0.8)
 	_title_panel.add_child(ts)
 	var go_b := Button.new()
 	go_b.text = "TAP TO BATTLE"
@@ -173,11 +186,11 @@ func _build() -> void:
 	_result_panel.visible = false
 	add_child(_result_panel)
 
-func _mk_dim() -> Control:
+func _mk_dim(alpha := 0.72) -> Control:
 	var c := Control.new()
 	c.set_anchors_preset(Control.PRESET_FULL_RECT)
 	var bg := ColorRect.new()
-	bg.color = Color(0.01, 0.015, 0.03, 0.72)
+	bg.color = Color(0.01, 0.015, 0.03, alpha)
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	c.add_child(bg)
 	return c

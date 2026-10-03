@@ -304,7 +304,7 @@ func _build_gates() -> void:
 			lab.outline_modulate = Color(0, 0, 0, 1)
 			lab.shaded = false
 			var tan: Vector3 = tangents[i]
-			lab.rotation.y = atan2(tan.x, tan.z)
+			lab.rotation.y = atan2(-tan.x, -tan.z)
 			lab.position = p + Vector3(0, 5.95, 0)
 			gate.add_child(lab)
 
@@ -607,33 +607,33 @@ func _build_rail_markers() -> void:
 
 func _build_sky_extras(rng: RandomNumberGenerator) -> void:
 	var c := (points[0] + points[COUNT / 2]) * 0.5
-	# chunky low-poly moon, fog-exempt so it stays crisp
-	var moon_mesh := SphereMesh.new()
-	moon_mesh.radius = 20.0
-	moon_mesh.height = 40.0
-	moon_mesh.radial_segments = 8
-	moon_mesh.rings = 4
-	var moon_mat := StandardMaterial3D.new()
-	moon_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	moon_mat.albedo_color = Color(0.88, 0.92, 1.0)
-	moon_mat.disable_fog = true
-	var moon := MeshInstance3D.new()
-	moon.mesh = moon_mesh
-	moon.material_override = moon_mat
-	moon.position = c + Vector3(280, 260, -340)
-	add_child(moon)
-	# stars: tiny emissive boxes on a dome, fog-exempt
+	# big setting sun, low on the horizon, fog-exempt so it stays crisp
+	var sun_mesh := SphereMesh.new()
+	sun_mesh.radius = 34.0
+	sun_mesh.height = 68.0
+	sun_mesh.radial_segments = 12
+	sun_mesh.rings = 6
+	var sun_mat := StandardMaterial3D.new()
+	sun_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sun_mat.albedo_color = Color(1.0, 0.42, 0.13)
+	sun_mat.disable_fog = true
+	var sun := MeshInstance3D.new()
+	sun.mesh = sun_mesh
+	sun.material_override = sun_mat
+	sun.position = c + Vector3(420, 70, -480)
+	add_child(sun)
+	# faint early stars, fog-exempt
 	var star_mesh := BoxMesh.new()
-	star_mesh.size = Vector3(1.6, 1.6, 1.6)
+	star_mesh.size = Vector3(1.2, 1.2, 1.2)
 	var star_mat := StandardMaterial3D.new()
 	star_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	star_mat.albedo_color = Color(0.85, 0.9, 1.0)
+	star_mat.albedo_color = Color(0.7, 0.72, 0.85, 0.5)
 	star_mat.disable_fog = true
 	var xf: Array[Transform3D] = []
-	for s in range(140):
+	for s in range(60):
 		var ang := rng.randf_range(0.0, TAU)
 		var rad := rng.randf_range(420.0, 620.0)
-		var h := rng.randf_range(170.0, 400.0)
+		var h := rng.randf_range(280.0, 450.0)
 		xf.append(Transform3D(Basis(), c + Vector3(cos(ang) * rad, h, sin(ang) * rad)))
 	_multimesh_box(self, star_mesh, star_mat, xf)
 
